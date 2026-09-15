@@ -1,0 +1,11 @@
+build
+!.vscode/*
+
+# Reference board design (kept on disk, not part of the firmware repo)
+/Axon 2/
+/Axon 2.zip
+__MACOSX/
+__pycache__/
+
+# macOS
+.DS_Store

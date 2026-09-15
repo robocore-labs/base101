@@ -1,0 +1,39 @@
+; PIO UART RX program
+; 8N1 format, LSB first
+; Waits for start bit, samples 8 data bits at midpoint
+
+.program pio_uart_rx
+
+start:
+    wait 0 pin 0        ; Wait for start bit (low)
+    set x, 7     [10]   ; 8 data bits, delay to mid-bit of first data bit
+bitloop:
+    in pins, 1           ; Sample RX pin
+    jmp x-- bitloop [6]  ; Loop for 8 bits
+    jmp pin good_stop    ; Check stop bit (high = good)
+    irq 4 rel            ; Bad stop bit, signal frame error
+    wait 1 pin 0         ; Wait for line to return high
+    jmp start            ; Start over
+good_stop:
+    push                 ; Push 8-bit value to RX FIFO
+
+% c-sdk {
+static inline void pio_uart_rx_program_init(PIO pio, uint sm, uint offset, uint pin_rx, uint baud) {
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_rx, 1, false);  // Input
+    pio_gpio_init(pio, pin_rx);
+    gpio_pull_up(pin_rx);
+
+    pio_sm_config c = pio_uart_rx_program_get_default_config(offset);
+    sm_config_set_in_pins(&c, pin_rx);
+    sm_config_set_jmp_pin(&c, pin_rx);
+    sm_config_set_in_shift(&c, true, false, 32);  // Shift right, manual push
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
+
+    // Each bit takes 8 cycles at the clock divider rate
+    float div = (float)clock_get_hz(clk_sys) / (8 * baud);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

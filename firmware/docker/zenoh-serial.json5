@@ -1,0 +1,19 @@
+{
+  // Zenoh router for the Axon board.
+  mode: "router",
+
+  listen: {
+    endpoints: [
+      // The Axon's zenoh CDC port, mapped into the container as
+      // /dev/axon-zenoh (see docker-compose.yml). The baudrate token is
+      // required by the locator syntax but is meaningless over USB CDC.
+      "serial//dev/axon-zenoh#baudrate=921600",
+
+      // TCP so rmw_zenoh sessions on the host can connect / federate.
+      "tcp/[::]:7447",
+    ],
+  },
+
+  // Keep scouting defaults; rmw_zenoh peers will discover this router over
+  // the TCP endpoint above (or connect explicitly with a `connect` endpoint).
+}

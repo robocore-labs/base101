@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axon Servo Config</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --border: #e3e6ea;
+    --text: #1c2024;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --ok: #16a34a;
+    --off: #9ca3af;
+    --danger: #dc2626;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116;
+      --card: #161b22;
+      --border: #272d36;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --ok: #3fb950;
+      --off: #6e7681;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+    line-height: 1.45;
+  }
+
+  /* ---- header ---- */
+  header { display: flex; align-items: center; gap: .75rem; margin-bottom: .35rem; }
+  header h1 { font-size: 1.35rem; margin: 0; letter-spacing: -.01em; }
+  header .spacer { flex: 1; }
+  .intro { color: var(--muted); font-size: .9rem; margin: 0 0 1.5rem; max-width: 60ch; }
+
+  /* ---- cards ---- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem 1.35rem;
+    margin-bottom: 1.25rem;
+  }
+  .card-head { display: flex; align-items: center; gap: .6rem; margin: 0 0 .9rem; }
+  .card-head h2 { font-size: 1.02rem; margin: 0; letter-spacing: -.01em; }
+  .card-head .chip {
+    font-size: .68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+    padding: .12rem .5rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+  .card-head .spacer { flex: 1; }
+  .card-sub { color: var(--muted); font-size: .82rem; margin: -.4rem 0 .9rem; }
+
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin: 0 0 1.25rem; }
+  .tab {
+    border: none; background: none; border-radius: 0;
+    padding: .6rem .9rem; margin-bottom: -1px;
+    font-size: .92rem; font-weight: 500; color: var(--muted);
+    border-bottom: 2px solid transparent;
+  }
+  .tab:hover:not(.active) { color: var(--text); border-color: transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .panel[hidden] { display: none; }
+
+  /* ---- buttons ---- */
+  button {
+    font: inherit; font-size: .86rem; font-weight: 500;
+    padding: .46rem .85rem; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    cursor: pointer; transition: background .12s, border-color .12s, transform .05s;
+  }
+  button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 25%, var(--border)); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.icon { padding: .35rem .55rem; line-height: 1; }
+
+  /* ---- status ---- */
+  .status {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-size: .8rem; font-weight: 500; color: var(--muted);
+    padding: .25rem .65rem; border-radius: 999px; border: 1px solid var(--border);
+  }
+  .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+  .status.on { color: var(--ok); }
+  .status.on::before { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+
+  /* ---- bars / rows ---- */
+  .bar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .bar + .card-sub, .bar + .bar { margin-top: .75rem; }
+  .row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .switch { display: inline-flex; align-items: center; gap: .5rem; font-size: .9rem; cursor: pointer; }
+
+  /* ---- table ---- */
+  table { border-collapse: collapse; width: 100%; }
+  thead th {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+    font-weight: 600; text-align: left; padding: .3rem .55rem; border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
+  tbody tr:last-child td { border-bottom: none; }
+  input[type=text], input[type=number] {
+    font: inherit; width: 100%; padding: .35rem .5rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text);
+  }
+  input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -1px; border-color: var(--accent); }
+  input[type=checkbox] { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+
+  /* ---- device list items ---- */
+  .device-list:empty::after {
+    content: "Press “Scan buses” to discover motors.";
+    color: var(--muted); font-size: .85rem; font-style: italic;
+  }
+  .device {
+    display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); margin-bottom: .55rem;
+  }
+  .device:last-child { margin-bottom: 0; }
+  .device .name { font-weight: 600; font-size: .9rem; min-width: 9rem; }
+  .device .name small { color: var(--muted); font-weight: 400; }
+  .device .spacer { flex: 1; }
+  .device input[type=number] { width: 5.5rem; }
+  .badge {
+    font-size: .68rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+    padding: .1rem .45rem; border-radius: 999px;
+    background: color-mix(in srgb, var(--off) 25%, transparent); color: var(--muted);
+  }
+  .badge.online { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .badge.id { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .badge.warn { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+  .unit { color: var(--muted); font-size: .82rem; }
+
+  /* ---- console ---- */
+  #log {
+    white-space: pre-wrap; background: #0b0e13; color: #c9d1d9;
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: .75rem .85rem; height: 190px; overflow: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .78rem; line-height: 1.5;
+  }
+  .muted { color: var(--muted); font-size: .85rem; }
+  .flow { color: var(--muted); font-size: .82rem; margin: .8rem 0 0; }
+  .flow b { color: var(--text); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Axon Servo Configuration</h1>
+    <span class="spacer"></span>
+    <span class="status" id="status">disconnected</span>
+  </header>
+  <p class="intro">
+    Connects to the board's <b>debug</b> USB serial port (CDC&nbsp;#2) and edits the servo
+    list stored in flash. Hold the sniff/config button while powering on to enter config
+    mode first. Requires Chrome or Edge (Web Serial).
+  </p>
+
+  <!-- Connection -->
+  <div class="card">
+    <div class="bar">
+      <button id="connect" class="primary">Connect</button>
+      <button id="load" disabled>Load from board</button>
+      <button id="defaults" class="ghost" disabled>Reset to defaults</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" role="tablist">
+    <button class="tab active" id="tab-config" role="tab" data-panel="panel-config">ROS configuration</button>
+    <button class="tab" id="tab-bench" role="tab" data-panel="panel-bench">Bus scan &amp; motor test</button>
+  </div>
+
+  <!-- ===== ROS configuration ===== -->
+  <section id="panel-config" class="panel active" role="tabpanel">
+    <!-- Servo config -->
+    <div class="card">
+      <div class="card-head">
+        <h2>Servo list</h2>
+        <span class="spacer"></span>
+        <label class="switch"><input type="checkbox" id="servosEnabled"> Subsystem enabled</label>
+      </div>
+      <p class="card-sub">The servos this node publishes to ROS as joints. Persisted to flash; takes effect on reboot.</p>
+      <table id="servoTable">
+        <thead><tr><th style="width:5rem">ID</th><th>Joint name</th><th style="width:5rem">Enable</th><th style="width:3rem"></th></tr></thead>
+        <tbody id="servoRows"></tbody>
+      </table>
+      <div class="bar" style="margin-top:.9rem">
+        <button id="addRow" disabled>+ Add servo</button>
+        <span class="spacer"></span>
+        <button id="apply" disabled>Apply (RAM)</button>
+        <button id="save" class="primary" disabled>Save to flash</button>
+        <button id="reboot" disabled>Reboot</button>
+      </div>
+      <p class="flow">Flow: edit &rarr; <b>Apply</b> (stages in RAM) &rarr; <b>Save</b> (flash) &rarr; <b>Reboot</b> (applies). Changes take effect after reboot.</p>
+    </div>
+  </section>
+
+  <!-- ===== Bus scan & motor test ===== -->
+  <section id="panel-bench" class="panel" role="tabpanel" hidden>
+    <div class="bar" style="margin-bottom:1.25rem">
+      <button id="listMotors" disabled>⟳ Scan buses</button>
+      <button id="stopAll" class="danger" disabled>■ Stop all wheels</button>
+      <span class="spacer"></span>
+      <span class="muted">Live discovery — config mode only. Nothing here is from the ROS list.</span>
+    </div>
+
+    <!-- Wheels card (DDSM210) -->
+    <div class="card">
+      <div class="card-head">
+        <h2>Wheels</h2>
+        <span class="chip">DDSM210</span>
+      </div>
+      <p class="card-sub">Hub motors, commanded in RPM.</p>
+      <div id="wheels" class="device-list"></div>
+    </div>
+
+    <!-- Servos card (ST3215) -->
+    <div class="card">
+      <div class="card-head">
+        <h2>Servos</h2>
+        <span class="chip">ST3215</span>
+      </div>
+      <p class="card-sub">Serial bus servos, commanded by position (0–4095).</p>
+      <div id="servos" class="device-list"></div>
+      <div class="bar" style="margin-top:.9rem">
+        <span class="muted">Change servo ID:</span>
+        <input type="number" id="idFrom" min="0" max="253" value="1" style="width:5rem"> &rarr;
+        <input type="number" id="idTo" min="0" max="253" value="2" style="width:5rem">
+        <button id="setId" disabled>Set ID</button>
+        <span class="muted">connect one servo at a time</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Console -->
+  <div class="card">
+    <div class="card-head"><h2>Console</h2></div>
+    <div id="log"></div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let port, writer, reader, readDone, lineBuf = "";
+
+function log(msg) {
+  const el = $("log");
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+function setConnected(c) {
+  const s = $("status");
+  s.textContent = c ? "connected" : "disconnected";
+  s.classList.toggle("on", c);
+  for (const id of ["load","defaults","addRow","apply","save","reboot","listMotors","stopAll","setId"]) $(id).disabled = !c;
+  $("connect").textContent = c ? "Disconnect" : "Connect";
+}
+
+async function send(obj) {
+  if (!writer) { log("! not connected"); return; }
+  const line = JSON.stringify(obj) + "\n";
+  try {
+    await writer.write(new TextEncoder().encode(line));
+    log("> " + line.trim());
+  } catch (e) {
+    // Device lost mid-write surfaces here — tear down instead of leaving a
+    // half-open port that silently swallows every later command.
+    log("! send failed: " + (e.message || e));
+    disconnect();
+  }
+}
+
+function handleLine(line) {
+  line = line.trim();
+  if (!line) return;
+  log("< " + line);
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if ("servos_enabled" in msg && Array.isArray(msg.servos)) {
+    renderConfig(msg);
+  } else if (msg.motors) {
+    renderMotors(msg.motors);
+  }
+}
+
+// Pure discovery: render only what the scan actually found on the buses.
+// Nothing here comes from the ROS servo list — this is live hardware.
+function renderMotors(m) {
+  const wheels = $("wheels");
+  wheels.innerHTML = "";
+  (m.wheels || []).forEach((w) => {
+    const div = document.createElement("div");
+    div.className = "device";
+    div.innerHTML =
+      `<span class="name">Bus ${w.index} <small>${w.port || ""}</small></span>` +
+      `<span class="badge ${w.online ? "online" : ""}">${w.online ? "online" : "empty"}</span>` +
+      (w.online && w.id != null ? `<span class="badge id">ID ${w.id}</span>` : "") +
+      `<span class="spacer"></span>` +
+      `<input type="number" value="30" step="5" ${w.online ? "" : "disabled"}> <span class="unit">rpm</span> ` +
+      `<button class="spin primary" ${w.online ? "" : "disabled"}>Spin</button>` +
+      `<button class="wstop" ${w.online ? "" : "disabled"}>Stop</button>`;
+    const rpm = div.querySelector("input");
+    div.querySelector(".spin").onclick = () => send({ cmd: "wheel", index: w.index, rpm: parseFloat(rpm.value || "0") });
+    div.querySelector(".wstop").onclick = () => send({ cmd: "wheel", index: w.index, rpm: 0 });
+    wheels.appendChild(div);
+  });
+
+  const servos = $("servos");
+  servos.innerHTML = "";
+  const range = m.servo_scan ? ` (scanned IDs ${m.servo_scan[0]}–${m.servo_scan[1]})` : "";
+  if (!(m.servos || []).length) {
+    servos.innerHTML = `<p class="muted" style="font-style:italic">No servos answered${range}.</p>`;
+  }
+  (m.servos || []).forEach((s) => {
+    const div = document.createElement("div");
+    div.className = "device";
+    div.innerHTML =
+      `<span class="name">Servo #${s.id}</span>` +
+      `<span class="badge online">online</span>` +
+      `<span class="spacer"></span>` +
+      `<button class="dec icon">− step</button>` +
+      `<input type="number" value="2048" step="64"> ` +
+      `<button class="go primary">Move to</button><button class="inc icon">+ step</button>`;
+    const pos = div.querySelector("input");
+    div.querySelector(".go").onclick  = () => send({ cmd: "servo", id: s.id, pos: parseInt(pos.value || "0", 10) });
+    div.querySelector(".inc").onclick = () => send({ cmd: "servo", id: s.id, delta: 256 });
+    div.querySelector(".dec").onclick = () => send({ cmd: "servo", id: s.id, delta: -256 });
+    servos.appendChild(div);
+  });
+}
+
+async function readLoop() {
+  reader = port.readable.getReader();
+  const dec = new TextDecoder();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;                       // reader.cancel() was called
+      lineBuf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = lineBuf.indexOf("\n")) >= 0) {
+        handleLine(lineBuf.slice(0, nl));
+        lineBuf = lineBuf.slice(nl + 1);
+      }
+    }
+  } catch (e) {
+    // Device unplugged mid-read surfaces here as a NetworkError — not fatal, just clean up.
+    log("disconnected: " + (e.message || e));
+    disconnect();
+  } finally {
+    try { reader.releaseLock(); } catch {}
+    reader = null;
+  }
+}
+
+async function disconnect() {
+  if (!port) return;
+  const p = port;
+  port = null;                               // guard against re-entry from readLoop
+  try { await reader?.cancel(); } catch {}    // unblocks read() and releases the lock
+  try { await readDone; } catch {}            // wait for readLoop to fully release
+  try { await writer?.close(); } catch {}
+  writer = null;
+  try { await p.close(); } catch {}
+  lineBuf = "";
+  setConnected(false);
+}
+
+function renderConfig(cfg) {
+  $("servosEnabled").checked = !!cfg.servos_enabled;
+  const tbody = $("servoRows");
+  tbody.innerHTML = "";
+  for (const s of cfg.servos) addRow(s);
+}
+
+function addRow(s = { id: 1, joint: "", enable: true }) {
+  const tr = document.createElement("tr");
+  tr.innerHTML =
+    `<td><input type="number" min="0" max="253" value="${s.id}"></td>` +
+    `<td><input type="text" value="${(s.joint||"").replace(/"/g,'&quot;')}" maxlength="15"></td>` +
+    `<td style="text-align:center"><input type="checkbox" ${s.enable?"checked":""}></td>` +
+    `<td><button class="del icon ghost">✕</button></td>`;
+  tr.querySelector(".del").onclick = () => tr.remove();
+  $("servoRows").appendChild(tr);
+}
+
+function collectConfig() {
+  const servos = [];
+  for (const tr of $("servoRows").querySelectorAll("tr")) {
+    const [idEl, jointEl, enEl] = tr.querySelectorAll("input");
+    servos.push({ id: parseInt(idEl.value || "0", 10),
+                  joint: jointEl.value || String(idEl.value),
+                  enable: enEl.checked });
+  }
+  return { servos_enabled: $("servosEnabled").checked, servos };
+}
+
+$("connect").onclick = async () => {
+  if (port) { await disconnect(); return; }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    setConnected(true);
+    readDone = readLoop();
+    await send({ cmd: "get" });
+  } catch (e) { log("connect failed: " + (e.message || e)); port = writer = null; }
+};
+
+$("load").onclick     = () => send({ cmd: "get" });
+$("defaults").onclick = () => send({ cmd: "defaults" });
+$("addRow").onclick   = () => addRow();
+$("apply").onclick    = () => send(Object.assign({ cmd: "set" }, collectConfig()));
+$("save").onclick     = () => send({ cmd: "save" });
+$("reboot").onclick   = () => send({ cmd: "reboot" });
+$("listMotors").onclick = () => send({ cmd: "motors" });
+$("stopAll").onclick    = () => send({ cmd: "stop" });
+$("setId").onclick      = () => send({ cmd: "setid", from: parseInt($("idFrom").value||"0",10), to: parseInt($("idTo").value||"0",10) });
+
+// Tabs: scan/test bench vs. ROS configuration.
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.onclick = () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
+    document.querySelectorAll(".panel").forEach((p) => {
+      const on = p.id === tab.dataset.panel;
+      p.classList.toggle("active", on);
+      p.hidden = !on;
+    });
+  };
+});
+
+if (!("serial" in navigator)) {
+  log("Web Serial not available — use Chrome or Edge over https/localhost/file.");
+  $("connect").disabled = true;
+} else {
+  // Physical unplug: tear down so the next Connect starts clean.
+  navigator.serial.addEventListener("disconnect", (e) => {
+    if (e.target === port) { log("device unplugged"); disconnect(); }
+  });
+}
+</script>
+</body>
+</html>
