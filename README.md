@@ -190,8 +190,12 @@ and `joint_states` carries just the 4 wheels.
 **Entering config mode:** hold the **sniff/config button** (GP32) while powering
 on. The board comes up with USB + motor buses but does **not** start
 zenoh/lidar — it serves an interactive JSON console on the debug port (CDC #2,
-`/dev/axon-debug`) and blinks the LEDs. Without the button it boots normally and
-the debug port is status-only.
+`/dev/axon-debug`). Without the button it boots normally and the debug port is
+status-only.
+
+The 6 WS2812 NeoPixels (GP18) are a mode-at-a-glance indicator: **all breathing
+red** = config mode, **all breathing blue** = normal ROS operation. A frozen
+strip means frozen firmware.
 
 **Console** (one JSON object per line on `/dev/axon-debug`):
 
@@ -231,7 +235,7 @@ src/sensors/bno055.c/.h     BNO055 IMU (I2C, NDOF fusion)
 src/bus/half_duplex.c/.h    merged two-channel Feetech servo bus + transact helper
 src/bus/ddsm_port.c/.h      dedicated PIO UART per DDSM motor (PIO1/PIO2)
 src/bus/lidar_uart.c/.h     lidar on hardware uart1 (forwarded to CDC #1)
-src/led.c/.h                classic GPIO activity LEDs (PWM-dimmed)
+src/led.c/.h                WS2812 NeoPixel mode indicator (red=config, blue=normal), PIO0 SM2
 src/dbg.c/.h                debug logging to USB CDC #2
 src/zenoh_port/             bare-metal zenoh-pico platform port (see below)
 lib/zenoh-pico/             vendored zenoh-pico (pico-ros pinned revision)

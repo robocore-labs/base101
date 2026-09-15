@@ -37,6 +37,7 @@
 #include "pins.h"
 #include "usb_descriptors.h"
 #include "dbg.h"
+#include "led.h"
 #include "bus/half_duplex.h"
 #include "bus/lidar_uart.h"
 #include "bus/ddsm_port.h"
@@ -81,6 +82,7 @@ static void io_poll(void) {
     ddsm_port_task();
     lidar_uart_task();
     lidar_bridge();
+    led_task();  // keeps the mode indicator breathing even while zenoh blocks
 }
 
 //--------------------------------------------------------------------
@@ -133,6 +135,7 @@ static void __attribute__((noinline)) run_config_mode(void) {
     // "servo"/"stop") can drive motors. zenoh/lidar/IMU stay off.
     half_duplex_init(AXON_ST_BAUD);
     ddsm_port_init(AXON_DDSM_BAUD);
+    led_init(LED_MODE_CONFIG);  // all pixels breathe red while in config mode
 
     axon_cfg_load();
     axon_node_motors_init();  // detect motors + set modes (servos per config)
@@ -142,6 +145,7 @@ static void __attribute__((noinline)) run_config_mode(void) {
     while (true) {
         tud_task();
         cfg_console_task();
+        led_task();
     }
 }
 
@@ -201,6 +205,9 @@ int main(void) {
     dbg_printf("[init] DDSM bus @%u baud on GP%d..GP%d (4 PIO UARTs)\n",
                (unsigned)AXON_DDSM_BAUD, PIN_DDSM_FR_TX, PIN_DDSM_BL_RX);
     ddsm_port_init(AXON_DDSM_BAUD);
+    dbg_printf("[init] NeoPixel indicator @GP%d (%d px) -> breathing blue\n",
+               PIN_NEOPIXELS, NEOPIXEL_COUNT);
+    led_init(LED_MODE_NORMAL);  // all pixels breathe blue in normal ROS operation
 
     // Runtime config (servo list / enable) from flash, else compiled defaults.
     bool cfg_stored = axon_cfg_load();

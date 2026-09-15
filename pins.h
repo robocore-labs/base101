@@ -11,6 +11,7 @@
 //   - 1x RPLidar on the uart1 hardware peripheral   (GP4/5)
 //   - BNO055 IMU on i2c1                             (GP14/15)
 //   - config/sniff button                           (GP17)
+//   - 6x WS2812 NeoPixel mode indicator             (GP18)
 //
 // All four DDSM UART pairs were validated by PIO-UART loopback on this
 // board (GP19->20, 21->22, 23->24, 25->26 all 6/6 OK).
@@ -33,6 +34,12 @@
 
 // --- Config / bus-sniff button (held LOW at boot -> config mode) ---
 #define PIN_CONFIG_BUTTON   17
+
+// --- WS2812 NeoPixel strip (mode indicator: red = config, blue = normal) ---
+// Single data line, carried by the spare PIO0 SM2 (see src/led.c). Same wiring
+// as rev1. Adjust NEOPIXEL_COUNT to the strip actually populated on the board.
+#define PIN_NEOPIXELS       18
+#define NEOPIXEL_COUNT      6
 
 // --- DDSM210 wheel motors — four independent PIO UARTs ---
 // Lower pin = MCU TX (-> motor RX), higher pin = MCU RX (<- motor TX).

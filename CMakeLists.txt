@@ -128,6 +128,7 @@ add_executable(axon_firmware
     src/config/cfg_console.c
     src/config/motor_test.c
     src/ros/axon_node.c
+    src/led.c
 )
 
 pico_set_program_name(axon_firmware "Axon ROS Node")
@@ -162,3 +163,4 @@ target_link_libraries(axon_firmware
 pico_add_extra_outputs(axon_firmware)
 pico_generate_pio_header(axon_firmware ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_tx.pio)
 pico_generate_pio_header(axon_firmware ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_rx.pio)
+pico_generate_pio_header(axon_firmware ${CMAKE_CURRENT_LIST_DIR}/src/pio/ws2812.pio)
