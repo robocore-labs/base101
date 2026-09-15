@@ -1,0 +1,109 @@
+# Minimal forge config for base101 on REAL HARDWARE: wheels + IMU + rosboard
+# over zenoh, nothing else. Closest forge equivalent of
+# docker/docker-compose.hw.yaml (same scope, same reasoning) — use that file
+# for local dev on this machine; use this one to actually deploy to the robot.
+#
+# NO LIDAR, NO CAMERA, NO SLAM/NAV/AGENT AT RUNTIME. Only the `drive`
+# component is launched. See the sibling (fuller, still-draft) hardware.yaml
+# for where lidar/camera/slam/nav/agent components would go once those are
+# wired up for real — this file deliberately doesn't try to be that yet.
+#
+# Project root is bpe/ (this file lives under robots/base101/, one level
+# down), because base101_bringup_hw's package.xml unconditionally
+# exec_depends on base101_slam, base101_nav AND robocore_agent — forge's
+# rosdep step resolves every declared dependency of every package it's given,
+# and a dependency it can neither find under `source:` nor look up as a
+# system package (all three are private, unregistered package names) is a
+# hard error. So base101_slam/base101_nav/robocore_agent below are BUILT,
+# not launched (nav:=false slam:=false agent:=false in the entrypoint) —
+# this is forced by that dependency graph, not a scope choice. The same
+# constraint hit docker-compose.hw.yaml's `ws` service; see its comment.
+#
+#   cd ~/Work/bpe
+#   forge -p . -f robots/base101/hardware.drive.yaml validate
+#   forge -p . -f robots/base101/hardware.drive.yaml prep && \
+#   forge -p . -f robots/base101/hardware.drive.yaml stage && \
+#   forge -p . -f robots/base101/hardware.drive.yaml build && \
+#   forge -p . -f robots/base101/hardware.drive.yaml launch
+#
+# One-time prerequisite forge does NOT do for you: build the zenoh router
+# image below (it compiles zenohd from source with the transport_serial
+# feature the stock eclipse/zenoh image lacks). It's referenced here purely
+# by local image name/tag — never pulled from `registry:` — so build it on
+# whichever host actually runs the router (the `robot` host, since
+# build_on_device is set there):
+#
+#   ssh cdr@base101.local
+#   cd <wherever base101 is checked out on the robot>/firmware/docker
+#   docker build -t axon-zenohd:latest --build-arg ZENOH_REF=1.9.0 .
+#
+# (Same Dockerfile docker-compose.hw.yaml's zenoh-axon service builds — see
+# firmware/docker/README.md.)
+
+ros_distro: jazzy
+ros_domain_id: 0
+registry: dragomirxyz
+image_prefix: base101_drive
+
+# The board talks zenoh over its USB-serial zenoh-pico link (see
+# HARDWARE.md), not multicast DDS, so this has to be zenoh — fastdds has no
+# way to reach it. router_command is REQUIRED here: forge's default router
+# command is `--listen tcp/0.0.0.0:<port>`, which would override the image's
+# own `-c /etc/zenoh/serial.json5` CMD and silently drop the serial listen
+# endpoint, leaving the router deaf to the board.
+rmw_implementation: zenoh
+zenoh:
+  router_image: axon-zenohd:latest
+  router_port: 7447
+  router_command: "-c /etc/zenoh/serial.json5"
+  # Requires the udev symlink from firmware/install.sh on the robot host. No
+  # symlink yet? Map the raw node instead: "/dev/ttyACM0:/dev/axon-zenoh".
+  router_devices:
+    - "/dev/axon-zenoh:/dev/axon-zenoh"
+
+hosts:
+  # PLACEHOLDER — same as the fuller hardware.yaml draft: confirm the
+  # hostname/user before the first deploy. build_on_device is deliberate:
+  # native ARM builds beat QEMU emulation, and the robot is the only ARM
+  # machine in the loop.
+  - name: robot
+    ip: orin.local
+    user: cdr
+    arch: arm64
+    manager: true
+    build_on_device: true
+    mount_root: /home/cdr/robocore-deploy
+
+components:
+
+  # robot_state_publisher + ros2_control (base101_control_plugin <-> the
+  # Axon firmware's /motor_manager topics, over the zenoh router above) +
+  # twist_mux + rosboard. base101_slam/base101_nav/robocore_agent are built
+  # (package.xml forces it — see file header) but never launched.
+  - name: drive
+    runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_description
+      - robots/base101/src/base101/base101_control
+      - robots/base101/src/base101/base101_control_plugin
+      - robots/base101/src/base101/base101_bringup_hw
+      - robots/base101/src/base101/base101_slam    # unused; see file header
+      - robots/base101/src/base101/base101_nav     # unused; see file header
+      - robots/base101/src/rosboard
+      - robocore-agent/src/robocore_agent           # unused; see file header
+    ports:
+      - "8888:8888"   # rosboard: http://<robot host>:8888
+    # forge's zenoh template already sets ZENOH_CONFIG_OVERRIDE for the
+    # listen/connect endpoints; this duplicate entry appends
+    # transport/shared_memory/enabled=false (docker's last-value-wins on
+    # repeated env keys). Same fix the firmware's own ros-sidecar needed
+    # (firmware/docker/ros/session.json5) — rmw_zenoh's default SHM provider
+    # fails to allocate inside a container ("Unable to create POSIX shm
+    # segment: OS error 12"), and here there's no bind-mounted config file to
+    # set it in directly.
+    environment:
+      ZENOH_CONFIG_OVERRIDE: >-
+        listen/endpoints=["tcp/0.0.0.0:0"];connect/endpoints=["tcp/zenoh_router:7447"];transport/shared_memory/enabled=false
+    entrypoint: >-
+      ros2 launch base101_bringup_hw robot.launch.py
+      nav:=false slam:=false agent:=false rosboard:=true

@@ -1,0 +1,204 @@
+# base101 arm profile: chassis + one deck-mounted mod101 arm.
+#
+# Matches `ros2 launch base101_bringup_gazebo sim.launch.py arm:=true`.
+# The armless baseline is base101.yaml; everything outside `groups` and
+# the wrist camera is identical to it and kept in sync by hand.
+#
+# Replaces base101_full.yaml, which described a tower + dual-arm robot that
+# can no longer be built (the tower is in attic/, the dual-arm overlay is
+# gone). Joint, controller and frame names below were read off a running
+# sim and the mod101 SRDF macro on 2026-08-22.
+#
+# NOT valid for hardware: base101_bringup_hw rejects arm:=true because there
+# is no arm hardware interface yet. See robots/base101/docs/findings-open.md.
+name: base101-arm
+model: base101 + 1 mod101 arm
+version: "0"
+protocol: 1
+
+frames:
+  map: map
+  odom: odom
+  base: base_link
+
+mobility:
+  locomotion: differential          # 4WD skid steer presents as diff drive
+  cmd_vel: /cmd_vel_agent           # twist_mux input (priority 50)
+  cmd_vel_stamped: true             # Jazzy twist_mux (use_stamped) wants TwistStamped
+  odom_topic: /diff_drive_controller/odom
+  nav2_navigate_to_pose: /navigate_to_pose
+  # No nav2_follow_waypoints — base101_nav launches no waypoint_follower.
+  max_linear: 0.5                   # m/s, measured: DDSM210 rated-speed reality
+  max_angular: 1.5                  # rad/s safety clamp
+
+groups:
+  # One group per actuated structure (spec 8.6). The v0.4 manipulation /
+  # joint_groups split is gone; this robot has exactly one group.
+  arm:
+    kind: arm
+    # The tool-mount interface: child of arm_joint_wrist_roll, and the
+    # last frame that does not depend on which tool is fitted. The jaws
+    # ARE modelled below it (arm_jaws_root -> body -> servo -> moving),
+    # but there is no frame at the point where they close, and
+    # arm_jaws_moving swings with arm_6 - which is not one of this
+    # group's joints, so solving to it would make ee_pose change when
+    # nothing in the group moved. Grasps carry the flange->grasp offset.
+    # See found_along_the_way.md item 7.
+    tip: arm_wrist_flange
+    # 5-DOF: full position, plus roll and pitch. YAW is the one the chain
+    # cannot choose - the base joint that aims the arm at a target is the
+    # same joint that sets the tool's yaw, so the two are not independent.
+    #
+    # Measured, not guessed (2026-08-24). At q=[0.3,1.0,1.2,0.2,0.5] the
+    # Jacobian has rank 5; perturbing roll alone or pitch alone is
+    # solvable to ~2e-4, perturbing yaw alone is Unreachable. An earlier
+    # version of this file masked ry on the assumption that a wrist with
+    # one roll joint could not pitch - but three joints rotate about y,
+    # so pitch is exactly what it CAN do. See found_along_the_way.md 9.
+    dof_mask: [1, 1, 1, 1, 1, 0]
+    controllers:
+      # Declared in base101_control/config/controllers.sim.yaml but NOT
+      # spawned - the agent loads it at TRAJECTORY session entry and
+      # unloads it on exit (6.0b). Validation accepts declared-or-loaded.
+      trajectory: /arm_trajectory_controller
+      # The Float64MultiArray position controller: spawned at boot, what
+      # the web slider UIs drive. Claims the same 5 joints as the
+      # trajectory twin, so only one of the two is ever active.
+      stream: /arm_controller
+      # Disjoint from the arm pair (claims arm_6 alone), so it stays
+      # active during an arm session - tool.close() needs no switch.
+      tool: /gripper_controller
+    # No joints: - derived from the loaded controller's claimed
+    # interfaces, which is where ros2_control's own truth lives. Add an
+    # override here only if a controller claims joints in an order the
+    # kinematic chain disagrees with.
+    tool:
+      # arm_6 is the tool's joint whichever tool is fitted (the mod101 tool
+      # mount contract). Default tool is whatever the mod101 web
+      # configurator last saved - `jaws` unless changed.
+      type: jaws
+      joint: arm_6
+      # MEASURED FROM THE GEOMETRY, 2026-08-26, and it is the OPPOSITE of
+      # what this file said until now. Transforming the jaw meshes' fitted
+      # bounds through the arm_6 joint, the gap between the fixed jaw
+      # (arm_jaws_body) and the moving one (arm_jaws_moving) is:
+      #
+      #   arm_6 = 0.00 -> 0.0338 m      arm_6 = 1.60 -> 0.0741 m
+      #   arm_6 = 0.50 -> 0.0500 m      arm_6 = 2.14 -> 0.0783 m
+      #   arm_6 = 1.07 -> 0.0649 m
+      #
+      # Monotonically WIDER with the joint angle. Those are centre-to-
+      # centre distances; subtracting the half-extents along that axis
+      # (~0.010 + ~0.027) puts the jaws touching at 0.0 and about 42 mm
+      # apart at 2.14.
+      #
+      # The previous values came from reading the sim by eye on
+      # 2026-08-25, at a time when arm_6 did not actuate — so the jaws
+      # were at their spawn value and never seen to move. This is the
+      # check that comment asked for. The symptom of the old values was a
+      # gripper that visibly opened when told to close, and an
+      # `is_holding` that was correctly False every time.
+      open: 2.14
+      closed: 0.0
+    workspace:
+      # base_link frame. NOT measured - a deliberately conservative first
+      # box, sized from the mod101 link lengths in the description so that
+      # nothing reachable inside it intersects the chassis. Tighten it
+      # against a real reach test before trusting it as a safety clamp.
+      # NOTHING enforces it yet: the FK workspace box is a Phase 7 item
+      # ("safety at rate"), not 6.4.
+      box:
+        x: [-0.15, 0.55]
+        y: [-0.45, 0.45]
+        z: [0.20, 0.85]
+
+# Vendor escape hatches. Nothing here is portable — that is the point:
+# a mission touching robot.sensors or robot.actions is visibly tied to
+# THIS robot, the same way group.control(raw=) is.
+#
+# The sim publishes none of these yet; they are declared so the surface is
+# exercised and so the shape is settled before the real st3215 boards
+# arrive. A declared signal that nobody publishes reads as value: None,
+# which is different from a signal that does not exist.
+sensors:
+  base_motor:
+    temperature: {topic: /motor_telemetry/arm_joint_base/temperature,
+                  type: std_msgs/Int32, units: degC}
+    current:     {topic: /motor_telemetry/arm_joint_base/current,
+                  type: std_msgs/Float32, units: mA}
+    load:        {topic: /motor_telemetry/arm_joint_base/load,
+                  type: std_msgs/Float32, units: percent}
+  shoulder_motor:
+    temperature: {topic: /motor_telemetry/arm_joint_shoulder/temperature,
+                  type: std_msgs/Int32, units: degC}
+    current:     {topic: /motor_telemetry/arm_joint_shoulder/current,
+                  type: std_msgs/Float32, units: mA}
+
+actions:
+  # is_motion has no default on purpose: neither default is safe. `true`
+  # makes every LED author write `false`, which they then paste onto
+  # something that does move; `false` lets a brake release through
+  # unguarded. One required line per action forces the thought once.
+  set_front_led:
+    topic: /leds/front
+    type: std_msgs/ColorRGBA
+    is_motion: false
+    max_rate: 10
+    parameters:
+      r: {type: float, min: 0.0, max: 1.0, default: 0.0}
+      g: {type: float, min: 0.0, max: 1.0, default: 0.0}
+      b: {type: float, min: 0.0, max: 1.0, default: 0.0}
+      a: {type: float, min: 0.0, max: 1.0, default: 1.0}
+
+cameras:
+  base:
+    rgb: /base_camera/image_raw
+    depth: /base_camera/depth_image  # co-located depth sensor (sim)
+    info: /base_camera/camera_info
+    # See base101.yaml for why optical: true matters — same reasoning.
+    frame: camera_optical_frame
+    optical: true
+  arm_wrist:
+    rgb: /arm_wrist_camera/image_raw
+    info: /arm_wrist_camera/camera_info
+    # RGB only: the wrist camera has no depth sensor, so deproject/get_cloud
+    # are unavailable on this handle by design.
+    frame: arm_wrist_camera_optical_frame
+    optical: true
+
+lidar:
+  # /scan_filtered, not /scan. The lidar spins 360 with the
+  # chassis behind it, so the raw scan reports the robot's own
+  # body 0.16-0.27 m astern (measured: 17 of 360 rays, all at
+  # |angle| >= 151 deg). A mission doing reactive avoidance off
+  # the raw scan would think it was permanently boxed in.
+  scan: /scan_filtered
+
+imu:
+  topic: /sensors/imu               # gz imu on base_link (also feeds the EKF)
+
+slam:
+  backend: slam_toolbox
+  map_dir: ~/.robocore/maps
+
+# No exploration section — see base101.yaml.
+
+teleop:
+  max_watchdog: 1.0                 # seconds; clients may request shorter, never longer
+
+audit:
+  retention_mb: 200
+
+watches: {}                         # dotted-path condition monitors
+
+places: {}                          # named poses, stored per-map
+
+
+status:
+  # No battery in sim; tests publish a fake BatteryState here to exercise
+  # battery.level watches. Real hardware maps its BMS.
+  battery: /fake_battery
+
+safety:
+  stop_on_disconnect: true
+  confirm_required: []

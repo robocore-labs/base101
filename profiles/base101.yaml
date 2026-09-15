@@ -1,0 +1,93 @@
+# base101 armless profile: mobility + sensing + slam.
+# The TurtleBot-equivalent baseline (spec section 22).
+#
+# Matches `ros2 launch base101_bringup_gazebo sim.launch.py` and
+# `base101_bringup_hw robot.launch.py` with their defaults (arm:=false).
+# For the arm configuration use base101_arm.yaml.
+#
+# Values marked "measured" come from the base101 workspace / worklogs;
+# everything else is the workspace's own config. Every topic and frame below
+# was checked against a running sim on 2026-08-22.
+name: base101
+model: base101 (chassis only)
+version: "0"
+protocol: 1
+
+frames:
+  map: map
+  odom: odom
+  base: base_link
+
+mobility:
+  locomotion: differential          # 4WD skid steer presents as diff drive
+  # twist_mux input for the agent (priority 50 in twist_mux.yaml).
+  cmd_vel: /cmd_vel_agent
+  cmd_vel_stamped: true             # Jazzy twist_mux (use_stamped) wants TwistStamped
+  odom_topic: /diff_drive_controller/odom
+  nav2_navigate_to_pose: /navigate_to_pose
+  # No nav2_follow_waypoints: base101_nav does not launch a waypoint_follower,
+  # so /follow_waypoints does not exist. `ros2 action list` on a live stack
+  # gives navigate_to_pose and navigate_through_poses only. Declaring it here
+  # advertised a capability that would fail on first call.
+  max_linear: 0.5                   # m/s, measured: DDSM210 rated-speed reality
+  max_angular: 1.5                  # rad/s safety clamp
+
+cameras:
+  base:
+    rgb: /base_camera/image_raw
+    depth: /base_camera/depth_image  # co-located depth sensor (sim)
+    info: /base_camera/camera_info
+    # Images and camera_info are stamped camera_optical_frame (the sensor's
+    # gz_frame_id in chassis.gazebo; the real realsense2_camera/depthai
+    # drivers stamp the same name, so this does not change on hardware).
+    #
+    # optical: true is REQUIRED and was missing: without it the agent applies
+    # the optical->link rotation to points that are already optical, and
+    # deproject/get_cloud come out 90 degrees wrong with no error. This is
+    # exactly the fix docs/robocore-camera-frames.md asks for.
+    #
+    # The old value here was `frame: base_camera`, which is the SDF *sensor*
+    # name, not a TF frame — no such frame exists in the tree.
+    frame: camera_optical_frame
+    optical: true
+    # frame_ttl: 30.0                # deprojection handle TTL (default)
+
+lidar:
+  # /scan_filtered, not /scan. The lidar spins 360 with the
+  # chassis behind it, so the raw scan reports the robot's own
+  # body 0.16-0.27 m astern (measured: 17 of 360 rays, all at
+  # |angle| >= 151 deg). A mission doing reactive avoidance off
+  # the raw scan would think it was permanently boxed in.
+  scan: /scan_filtered
+
+imu:
+  topic: /sensors/imu               # gz imu on base_link (also feeds the EKF)
+
+slam:
+  backend: slam_toolbox
+  map_dir: ~/.robocore/maps
+
+# No exploration section: explore_lite is not installed and is not launched
+# (nav_restructure.md dropped it — frontier finding became a Python concern),
+# and robocore_agent has no frontier code of its own. Declaring it advertised
+# a capability nothing implements.
+
+teleop:
+  max_watchdog: 1.0                 # seconds; clients may request shorter, never longer
+
+audit:
+  retention_mb: 200
+
+watches: {}                         # dotted-path condition monitors
+
+places: {}                          # named poses, stored per-map
+
+
+status:
+  # No battery in sim; tests publish a fake BatteryState here to exercise
+  # battery.level watches (mission_02_watch). Real hardware maps its BMS.
+  battery: /fake_battery
+
+safety:
+  stop_on_disconnect: true
+  confirm_required: []
