@@ -1,7 +1,7 @@
 # Running base101 on real hardware
 
 base101's motors, IMU and lidar are driven by the **Axon 2 board (RP2354B)**
-running the firmware in [`firmware/`](firmware). It is a native ROS 2
+running the [`base101-fw`](../base101-fw) firmware. It is a native ROS 2
 node (Pico-ROS + zenoh-pico, compatible with `rmw_zenoh`): the host talks ROS
 topics, not raw serial. On the host side, `ros2_control` runs the usual
 `diff_drive_controller`, and `base101_control_plugin` bridges its per-wheel
@@ -22,7 +22,7 @@ diff_drive_controller ──▶ base101_control_plugin/ROS2ControlBridge
 | `/motor_manager/joint_states` | `sensor_msgs/JointState` | fw→host | wheels in slots 0–3, 50 Hz |
 | `/imu/data`, `/imu/mag`, `/imu/temperature` | `Imu` / `MagneticField` / `Temperature` | fw→host | BNO055, frame `imu_link`, 50 Hz |
 
-**Joint names + order are a contract** with `firmware/src/ros/axon_config.h`:
+**Joint names + order are a contract** with `base101-fw/src/ros/axon_config.h`:
 
 - names: `front_left_wheel_joint`, `front_right_wheel_joint`,
   `back_left_wheel_joint`, `back_right_wheel_joint` (used by both the URDF and
@@ -36,7 +36,7 @@ If you change either side, change both.
 
 1. **udev rules** — exposes the board as stable device names:
    ```
-   cd firmware && ./install.sh
+   cd ~/Work/base101-fw && ./install.sh
    #  /dev/axon-zenoh  zenoh serial transport
    #  /dev/axon-lidar  RPLidar C1 UART passthrough
    #  /dev/axon-debug  firmware debug log
@@ -44,7 +44,7 @@ If you change either side, change both.
 2. **zenoh router** — bridges the board's serial zenoh to the host's
    `rmw_zenoh` sessions (TCP 7447). Use the firmware's compose file:
    ```
-   cd firmware/docker && docker compose up -d   # uses zenoh-serial.json5
+   cd ~/Work/base101-fw/docker && docker compose up -d   # uses zenoh-serial.json5
    ```
 3. **rmw_zenoh** — every ROS 2 shell that should see the board:
    ```
