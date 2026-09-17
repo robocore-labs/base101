@@ -1,12 +1,13 @@
-# Minimal forge config for base101 on REAL HARDWARE: wheels + IMU + rosboard
-# over zenoh, nothing else. Closest forge equivalent of
-# docker/docker-compose.hw.yaml (same scope, same reasoning) — use that file
+# forge config for base101 on REAL HARDWARE: wheels + IMU + rosboard (drive),
+# SLAM and Nav2 as their own components, and an OAK-D Lite camera. Closest
+# forge equivalent of docker/docker-compose.hw.yaml, extended — use that file
 # for local dev on this machine; use this one to actually deploy to the robot.
 #
-# NO LIDAR, NO CAMERA, NO SLAM/NAV/AGENT AT RUNTIME. Only the `drive`
-# component is launched. See the sibling (fuller, still-draft) hardware.yaml
-# for where lidar/camera/slam/nav/agent components would go once those are
-# wired up for real — this file deliberately doesn't try to be that yet.
+# STILL NO LIDAR. slam and nav are real, launched components now (not just
+# built-but-unused — see the note below), but slam_toolbox/nav2 both need a
+# /scan topic neither publishes nor has anywhere to get: there's no lidar
+# component here. They'll start and sit idle until one exists. See the
+# sibling (fuller, still-draft) hardware.yaml for where that would go.
 #
 # Project root is bpe/ (this file lives under robots/base101/, one level
 # down), because base101_bringup_hw's package.xml unconditionally
@@ -14,10 +15,13 @@
 # rosdep step resolves every declared dependency of every package it's given,
 # and a dependency it can neither find under `source:` nor look up as a
 # system package (all three are private, unregistered package names) is a
-# hard error. So base101_slam/base101_nav/robocore_agent below are BUILT,
-# not launched (nav:=false slam:=false agent:=false in the entrypoint) —
-# this is forced by that dependency graph, not a scope choice. The same
-# constraint hit docker-compose.hw.yaml's `ws` service; see its comment.
+# hard error. So the `drive` component below still BUILDS
+# base101_slam/base101_nav/robocore_agent even though it doesn't launch them
+# (nav:=false slam:=false agent:=false — slam/nav run for real as their own
+# components instead, agent still isn't wired up) — this is forced by that
+# dependency graph, not a scope choice, and means base101_slam/base101_nav
+# get built twice (once inert inside `drive`, once for real in their own
+# components). Same constraint hit docker-compose.hw.yaml's `ws` service.
 #
 #   cd ~/Work/bpe
 #   forge -p . -f robots/base101/hardware.drive.yaml validate
@@ -79,7 +83,13 @@ components:
   # robot_state_publisher + ros2_control (base101_control_plugin <-> the
   # Axon firmware's /motor_manager topics, over the zenoh router above) +
   # twist_mux + rosboard. base101_slam/base101_nav/robocore_agent are built
-  # (package.xml forces it — see file header) but never launched.
+  # (package.xml forces it — see file header) but never launched here; slam
+  # and nav run for real as their own components below.
+  #
+  # The `environment:` block here is also the anchor every other zenoh
+  # component in this file reuses (`environment: *zenoh_shm_fix`) — see its
+  # own comment for what it's for and why every component needs it, not just
+  # this one.
   - name: drive
     runs_on: robot
     source:
@@ -94,16 +104,66 @@ components:
     ports:
       - "8888:8888"   # rosboard: http://<robot host>:8888
     # forge's zenoh template already sets ZENOH_CONFIG_OVERRIDE for the
-    # listen/connect endpoints; this duplicate entry appends
+    # listen/connect endpoints; this duplicate key appends
     # transport/shared_memory/enabled=false (docker's last-value-wins on
-    # repeated env keys). Same fix the firmware's own ros-sidecar needed
-    # (firmware/docker/ros/session.json5) — rmw_zenoh's default SHM provider
-    # fails to allocate inside a container ("Unable to create POSIX shm
-    # segment: OS error 12"), and here there's no bind-mounted config file to
-    # set it in directly.
-    environment:
+    # repeated env keys, confirmed via `docker compose config`). Same fix the
+    # firmware's own ros-sidecar needed (firmware/docker/ros/session.json5)
+    # — rmw_zenoh's default SHM provider fails to allocate inside a
+    # container ("Unable to create POSIX shm segment: OS error 12"), and
+    # here there's no bind-mounted config file to set it in directly.
+    environment: &zenoh_shm_fix
       ZENOH_CONFIG_OVERRIDE: >-
         listen/endpoints=["tcp/0.0.0.0:0"];connect/endpoints=["tcp/zenoh_router:7447"];transport/shared_memory/enabled=false
     entrypoint: >-
       ros2 launch base101_bringup_hw robot.launch.py
       nav:=false slam:=false agent:=false rosboard:=true
+
+  # SLAM half: EKF (robot_localization) + slam_toolbox, mapping mode. NEEDS
+  # A LIDAR — no /scan source exists in this file yet (see file header).
+  # Starts and sits idle until one does.
+  - name: slam
+    runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_slam
+    environment: *zenoh_shm_fix
+    entrypoint: ros2 launch base101_slam slam.launch.py use_sim_time:=false
+
+  # Nav2 half. Same lidar caveat as slam above — and slam's /map is Nav2's
+  # own dependency, so this is two components deep into "needs a lidar
+  # first". rviz:=false: nothing renders on the robot.
+  - name: nav
+    runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_nav
+    environment: *zenoh_shm_fix
+    entrypoint: >-
+      ros2 launch base101_nav nav.launch.py
+      use_sim_time:=false rviz:=false
+
+  # Luxonis OAK-D Lite on the front bracket. Unlike OAK-D/OAK-D-Pro, the
+  # Lite has NO onboard IMU — vision only, the Axon's BNO055 stays the only
+  # IMU source. privileged + broad /dev/bus/usb passthrough (not one pinned
+  # device path) because it re-enumerates at a new USB address when it
+  # switches from bootloader to runtime, which happens on every power cycle.
+  #
+  # depthai-ros publishes a distro-matched branch per ROS release; `jazzy`
+  # is the one for this workspace (confirmed against the upstream repo's
+  # branch list — humble/jazzy/kilted all exist in parallel, plus v3_*
+  # variants of each for the newer driver, not used here).
+  #
+  # TODO(verify): confirm this driver stamps camera_optical_frame and
+  # publishes under /oak, if anything downstream (a profile, a static TF)
+  # assumes either — unverified against real hardware, same as the sibling
+  # hardware.yaml draft's camera component.
+  - name: camera
+    runs_on: robot
+    privileged: true
+    repositories:
+      - url: https://github.com/luxonis/depthai-ros.git
+        version: jazzy
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+    environment: *zenoh_shm_fix
+    entrypoint: >-
+      ros2 launch depthai_ros_driver camera.launch.py
+      camera_model:=OAK-D-LITE

@@ -1,8 +1,8 @@
-# Axon ROS Node Firmware
-# Target: RoboCore Axon 2 Board, rev2 (RP2350A, 30 GPIO)
+# base101 firmware — a ROS 2 node on a Link101 board (RP2350A).
 #
-# Native Pico-ROS (zenoh) node: ST3215 + DDSM210 motor control in
-# firmware, lidar UART forwarded over USB CDC.
+# The drivers, the board support and the whole zenoh/ROS stack are
+# libraries now (link-libraries/, and easypicoros); what is left here is
+# the robot. See robot.h.
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -27,140 +27,91 @@ endif()
 set(PICO_BOARD pico2 CACHE STRING "Board type")
 set(PICO_PLATFORM rp2350 CACHE STRING "Platform type")
 
-# rev2 board uses the RP2350A (30 GPIO, GP0..29). Match the SDK to the A part.
-# (rev1 was the RP2354B/48-GPIO; PICO_RP2350A=0 selected that — gone on rev2.)
+# The board is an RP2350A: 30 GPIO, GP0..29. (The rev1 board was the
+# 48-GPIO RP2354B, which is what PICO_RP2350A=0 selected.)
 add_compile_definitions(PICO_RP2350A=1)
 
 include(pico_sdk_import.cmake)
 
-project(axon_firmware C CXX ASM)
+project(base101_firmware C CXX ASM)
 
 pico_sdk_init()
 
 # ---------------------------------------------------------------------------
-# zenoh-pico — single-threaded bare-metal build with the custom "axon"
-# platform profile (lib/zenoh-pico/cmake/platforms/axon.cmake). The only
-# link is the zenoh serial protocol over our USB CDC port.
+# Libraries
+#
+# Five of these are the link101 libraries (git submodules under lib/); the
+# sixth, easypicoros, brings Pico-ROS with it. Between them they are the
+# board, the drivers, and the ROS stack:
+#
+#   pico_serial       the serial_t every driver speaks
+#   pico_cdc_serial   a USB CDC interface as one of those
+#   hardware_link101  the board: PIO/UART ports, pins, the LED strip, the
+#                     onboard LSM6DSOX + MMC5983MA IMU
+#   pico_feetech      Feetech STS servos
+#   pico_ddsm         DDSM210 wheel motors
+#   pico_zenoh        zenoh-pico for bare metal, over any serial_t
+#   easypicoros       ROS 2 publishers and subscribers on top of that
+#
+# zenoh-pico, picoros and micro-CDR stay vendored in lib/: they are
+# upstream projects we track rather than ours.
 # ---------------------------------------------------------------------------
-set(AXON_ZENOH_PLATFORM_SOURCES
-    ${CMAKE_CURRENT_LIST_DIR}/src/zenoh_port/system_axon.c
-    ${CMAKE_CURRENT_LIST_DIR}/src/zenoh_port/serial_axon.c
-    CACHE INTERNAL "")
-set(AXON_ZENOH_PLATFORM_INCLUDES
-    ${CMAKE_CURRENT_LIST_DIR}/src/zenoh_port
-    ${CMAKE_CURRENT_LIST_DIR}            # tusb_config.h
-    CACHE INTERNAL "")
+set(LINK101_LIBS ${CMAKE_CURRENT_LIST_DIR}/lib)
 
-set(ZP_PLATFORM "axon" CACHE STRING "" FORCE)
-set(BUILD_SHARED_LIBS OFF)
+# tusb_config.h and the USB descriptors are ours, as TinyUSB requires.
+set(CDC_SERIAL_TUSB_CONFIG_DIR ${CMAKE_CURRENT_LIST_DIR} CACHE PATH "" FORCE)
 
-set(Z_FEATURE_MULTI_THREAD 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_SERIAL 1 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_SERIAL_USB 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_TCP 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_UDP_MULTICAST 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_UDP_UNICAST 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_WS 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LINK_TLS 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_SCOUTING 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_MULTICAST_TRANSPORT 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_RAWETH_TRANSPORT 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_UNICAST_PEER 0 CACHE STRING "" FORCE)
-set(Z_FEATURE_LIVELINESS 1 CACHE STRING "" FORCE)
-set(Z_FEATURE_AUTO_RECONNECT 1 CACHE STRING "" FORCE)
+# Where pico_zenoh and easypicoros find the upstream sources they build.
+set(PICO_ZENOH_ZENOH_PICO_DIR ${CMAKE_CURRENT_LIST_DIR}/lib/zenoh-pico)
+set(EASYP_PICOROS_DIR         ${CMAKE_CURRENT_LIST_DIR}/lib/picoros)
+set(EASYP_MICROCDR_DIR        ${CMAKE_CURRENT_LIST_DIR}/lib/microcdr)
 
-# Match rmw_zenohd's default lease settings (pico-ros recommendation)
-set(Z_TRANSPORT_LEASE 60000 CACHE STRING "" FORCE)
-set(Z_TRANSPORT_LEASE_EXPIRE_FACTOR 2 CACHE STRING "" FORCE)
-
-add_subdirectory(lib/zenoh-pico)
-
-target_link_libraries(zenohpico_static
-    pico_stdlib
-    pico_rand
-    tinyusb_device
-    tinyusb_board
-)
+add_subdirectory(${LINK101_LIBS}/pico_serial      pico_serial)
+add_subdirectory(${LINK101_LIBS}/pico_cdc_serial  pico_cdc_serial)
+add_subdirectory(${LINK101_LIBS}/pico_zenoh       pico_zenoh)
+add_subdirectory(${LINK101_LIBS}/hardware_link101 hardware_link101)
+add_subdirectory(${LINK101_LIBS}/pico_feetech     pico_feetech)
+add_subdirectory(${LINK101_LIBS}/pico_ddsm        pico_ddsm)
+add_subdirectory(${LINK101_LIBS}/easypicoros      easypicoros)
 
 # ---------------------------------------------------------------------------
-# Micro-CDR
+# The firmware
 # ---------------------------------------------------------------------------
-add_library(microcdr STATIC
-    lib/microcdr/src/c/common.c
-    lib/microcdr/src/c/types/array.c
-    lib/microcdr/src/c/types/basic.c
-    lib/microcdr/src/c/types/sequence.c
-    lib/microcdr/src/c/types/string.c
-)
-target_include_directories(microcdr PUBLIC
-    lib/microcdr/include
-    lib/microcdr/config
-)
-
-# ---------------------------------------------------------------------------
-# Pico-ROS (picoros + picoserdes with our message types)
-# ---------------------------------------------------------------------------
-add_library(picoros STATIC
-    lib/picoros/picoros.c
-    lib/picoros/picoserdes.c
-)
-target_include_directories(picoros PUBLIC
-    lib/picoros
-    src/ros
-)
-target_compile_definitions(picoros PUBLIC -DUSER_TYPE_FILE="axon_types.h")
-target_link_libraries(picoros zenohpico::lib microcdr)
-
-# ---------------------------------------------------------------------------
-# Firmware — native Pico-ROS node (rev2 / RP2350A)
-# ---------------------------------------------------------------------------
-add_executable(axon_firmware
+add_executable(base101_firmware
     main.c
+    io.c
+    lidar.c
+    wheels.c
+    servos.c
+    imu.c
+    ros.c
+    status.c
     usb_descriptors.c
-    src/dbg.c
-    src/bus/half_duplex.c
-    src/bus/lidar_uart.c
-    src/bus/ddsm_port.c
-    src/motors/ddsm210.c
-    src/motors/st3215.c
-    src/sensors/bno055.c
-    src/config/axon_cfg.c
-    src/config/cfg_console.c
-    src/config/motor_test.c
-    src/ros/axon_node.c
-    src/led.c
 )
 
-pico_set_program_name(axon_firmware "Axon ROS Node")
-pico_set_program_version(axon_firmware "3.0")
+pico_set_program_name(base101_firmware "base101")
+pico_set_program_version(base101_firmware "4.0")
 
-# The firmware manages USB itself (custom 3-CDC TinyUSB descriptors); keep the
-# SDK stdio off both transports so it cannot fight TinyUSB or claim a CDC.
-pico_enable_stdio_uart(axon_firmware 0)
-pico_enable_stdio_usb(axon_firmware 0)
+# The firmware drives USB itself (three CDC ports, custom descriptors), so
+# the SDK's stdio must stay off both transports and out of the way.
+pico_enable_stdio_uart(base101_firmware 0)
+pico_enable_stdio_usb(base101_firmware 0)
 
-target_include_directories(axon_firmware PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}        # pins.h, tusb_config.h, usb_descriptors.h
-    ${CMAKE_CURRENT_LIST_DIR}/src
-)
+target_include_directories(base101_firmware PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 
-target_link_libraries(axon_firmware
+target_link_libraries(base101_firmware
     pico_stdlib
     pico_unique_id
-    pico_rand
-    hardware_pio
-    hardware_clocks
-    hardware_uart
     hardware_i2c
-    hardware_irq
-    hardware_flash
-    hardware_watchdog
     tinyusb_device
     tinyusb_board
-    picoros
+    hardware_link101
+    pico_cdc_serial
+    pico_feetech
+    pico_ddsm
+    easypicoros
 )
 
-pico_add_extra_outputs(axon_firmware)
-pico_generate_pio_header(axon_firmware ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_tx.pio)
-pico_generate_pio_header(axon_firmware ${CMAKE_CURRENT_LIST_DIR}/src/pio/uart_rx.pio)
-pico_generate_pio_header(axon_firmware ${CMAKE_CURRENT_LIST_DIR}/src/pio/ws2812.pio)
+target_compile_options(base101_firmware PRIVATE -Wall -Wextra)
+
+pico_add_extra_outputs(base101_firmware)

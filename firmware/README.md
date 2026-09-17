@@ -1,113 +1,164 @@
-# Axon ROS Node Firmware
+# base101 firmware
 
-Firmware for the **RoboCore Axon 2 board (RP2354B)** that turns it into a **native ROS 2 node**: the motor control for the [LLMy robot](https://github.com/cristidragomir97/LLMy) runs directly in firmware and is exposed to the ROS graph over **zenoh** ([Pico-ROS](https://github.com/Pico-ROS/Pico-ROS-software) + [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico), compatible with [rmw_zenoh](https://github.com/ros2/rmw_zenoh)).
-
-This replaces the previous "multiprotocol USB bridge" firmware. The host no longer talks raw serial protocols to motors through forwarded CDC ports — it publishes and subscribes to ROS topics. The remaining passthrough is the lidar UART.
+Firmware for the **Link101 board (RP2350A)** that makes base101 a **ROS 2
+node in its own right**. Motor control runs on the board; the host talks to
+it over **zenoh** ([Pico-ROS](https://github.com/Pico-ROS/Pico-ROS-software)
++ [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico), compatible with
+[rmw_zenoh](https://github.com/ros2/rmw_zenoh)). There is no bridge process
+and no serial protocol for the host to speak — with `rmw_zenoh` running,
+this board is another node in the graph.
 
 ```
-            ┌──────────────────────────── Axon 2 (RP2354B) ────────────────────────┐
-            │                                                                       │
- USB CDC #0 │  zenoh serial transport ── Pico-ROS node "axon"                       │
-◄──────────►│     sub /motor_manager/base_cmd ───► DDSM210 driver ──► 4× wheel UARTs │──► 4× DDSM210
-            │     sub /motor_manager/arm_cmd  ───► ST3215 driver ──► merged servo bus│──► 6× ST3215
-            │     pub /motor_manager/joint_states ◄── telemetry loop                 │
-            │     pub /motor_telemetry/<joint>/* ◄── telemetry loop                  │
-            │     pub /imu/data, /imu/mag, /imu/temperature ◄── BNO055 (i2c1)        │
- USB CDC #1 │                                                                       │
-◄──────────►│  raw passthrough ◄──────────────────────────────────────► lidar uart1 │──► RPLidar C1
- USB CDC #2 │                                                                       │
-◄──────────►│  debug log ◄── init info / discovered IDs / status                    │
-            └───────────────────────────────────────────────────────────────────────┘
+            ┌───────────────────────── Link101 (RP2350A) ─────────────────────┐
+            │                                                                  │
+ USB CDC #0 │  zenoh ── ROS node "axon"                                        │
+◄──────────►│    sub  base_cmd  ──► 4x DDSM210, one PIO UART each              │──► wheels
+            │    sub  arm_cmd   ──► Feetech servos on the half-duplex bus      │──► arm
+            │    pub  joint_states, motor_telemetry/*                          │
+            │    pub  imu/data, imu/mag, imu/temperature ◄── onboard IMU (i2c1)│
+ USB CDC #1 │                                                                  │
+◄──────────►│  passthrough ◄──────────────────────────────────► uart1          │──► RPLidar C1
+ USB CDC #2 │                                                                  │
+◄──────────►│  boot log (goes quiet once zenoh is up)                          │
+            └──────────────────────────────────────────────────────────────────┘
 ```
 
-It is the firmware equivalent of the LLMy host packages [`ddsm210_manager`](https://github.com/cristidragomir97/LLMy/tree/main/ros/src/ddsm210_manager) and [`st3215_manager`](https://github.com/cristidragomir97/LLMy/tree/main/ros/src/st3215_manager) — same topics, same message types, same joint/index mapping.
+## Where to start
 
----
+**[`robot.h`](robot.h) is the robot.** Pins, motor IDs, joint names,
+directions, rates, topic names, speed limits — all of it, in one file, with
+nothing else in the firmware carrying numbers like these. Retuning or
+rewiring means editing that file and reflashing.
+
+The rest is one file per thing, ~100 lines each, readable in any order:
+
+| File | What it is |
+|---|---|
+| [`main.c`](main.c) | `setup()` then `loop()`. The whole shape of the firmware. |
+| [`wheels.c`](wheels.c) | The four drive wheels: speed in, angle out. |
+| [`servos.c`](servos.c) | The arm: angle in, angle and telemetry out. |
+| [`imu.c`](imu.c) | The onboard LSM6DSOX + MMC5983MA. |
+| [`lidar.c`](lidar.c) | Bytes between USB CDC #1 and uart1. |
+| [`ros.c`](ros.c) | Publishers, subscribers, and what goes out when. |
+| [`status.c`](status.c) | The boot log, and what the LED strip is saying. |
+| [`io.c`](io.c) | USB, and the heartbeat every blocking wait runs. |
+
+Everything below that — the board, the drivers, zenoh, the ROS layer — is a
+library, in `lib/` as a submodule. See [Libraries](#libraries).
 
 ## ROS interface
 
-| Direction | Topic | Type | Function |
+| Direction | Topic | Type | Meaning |
 |---|---|---|---|
-| sub | `/motor_manager/base_cmd` | `std_msgs/Float64MultiArray` | 4 wheel velocities, rad/s |
+| sub | `/motor_manager/base_cmd` | `std_msgs/Float64MultiArray` | 4 wheel speeds, rad/s |
 | sub | `/motor_manager/arm_cmd` | `std_msgs/Float64MultiArray` | arm joint angles, rad |
-| sub | `/motor_manager/camera_cmd` | `std_msgs/Float64MultiArray` | camera tilt, rad (disabled by default) |
-| pub | `/motor_manager/joint_states` | `sensor_msgs/JointState` | merged wheel + arm state, 50 Hz |
+| pub | `/motor_manager/joint_states` | `sensor_msgs/JointState` | wheels + arm, 50 Hz |
 | pub | `/motor_telemetry/<joint>/current` | `std_msgs/Float32` | servo current, mA |
 | pub | `/motor_telemetry/<joint>/voltage` | `std_msgs/Float32` | servo voltage, V |
 | pub | `/motor_telemetry/<joint>/load` | `std_msgs/Float32` | servo load, % |
 | pub | `/motor_telemetry/<joint>/temperature` | `std_msgs/Int32` | servo temperature, °C |
-| pub | `/imu/data` | `sensor_msgs/Imu` | BNO055 fusion: orientation, angular velocity, linear accel, 50 Hz |
-| pub | `/imu/mag` | `sensor_msgs/MagneticField` | BNO055 magnetometer, tesla |
-| pub | `/imu/temperature` | `sensor_msgs/Temperature` | BNO055 chip temperature, °C |
+| pub | `/imu/data` | `sensor_msgs/Imu` | angular velocity + acceleration, 50 Hz |
+| pub | `/imu/mag` | `sensor_msgs/MagneticField` | magnetometer, tesla |
+| pub | `/imu/temperature` | `sensor_msgs/Temperature` | IMU die temperature, °C |
 
-Behaviour ported from the original packages:
+Command arrays are in the order of the `WHEELS` and `SERVOS` tables in
+`robot.h`; reorder a table and both the command array and the joint_states
+slots follow. Wheel speeds are `rad/s × direction`, capped at
+`WHEEL_MAX_RPM`; arm angles are radians from centre. Repeating a command is
+free — an unchanged value is not re-sent to the bus.
 
-- **Wheels (DDSM210, velocity loop).** Four independent wheels. `base_cmd[command_index] × direction` rad/s → RPM (`speed_scale` applied) → 0.1-RPM units, clamped to `max_rpm` (default 100, hardware max 210). The command array order is `[0] front_left, [1] front_right, [2] back_left, [3] back_right`; left side runs `direction = -1`, right side `+1`. Commands are deduplicated (only changes hit the bus). Joint-state position is the absolute multi-turn angle reconstructed from mileage laps + the 16-bit encoder.
-- **Arm (ST3215, position mode).** `arm_cmd[command_index] × direction` rad → ticks (`2048 + angle/2π × 4096`, clamped to 0..4095), sent as `MoveTo` with the group's `position_speed`/`position_accel` scaled by `speed_scale`. On boot each servo is set to position mode, torque-enabled, and gently holds its current position (like the original manager).
-- **Velocity-mode ST groups** (none enabled by default) implement the original behaviour: zero speed → `Rotate(0)` + torque off; non-zero → torque on + `Rotate`.
-- **JointState layout.** One merged message with `AXON_TOTAL_JOINTS` (10) fixed slots; each motor writes its `state_index` (wheels 0–3, arm joints 4–9), unresponsive motors leave their slot empty — same `state_indices` convention as the YAML configs. (Camera tilt would be slot 10; enabling it requires bumping `AXON_TOTAL_JOINTS` to 11.)
-- **IMU (BNO055, NDOF fusion).** One I2C sample per 50 Hz tick published as `Imu` + `MagneticField` + `Temperature`. `linear_acceleration` includes gravity (per `sensor_msgs/Imu` convention); covariances are fixed nominal diagonals in `axon_config.h`. If the sensor doesn't answer at boot, the IMU topics are simply not declared and the rest of the node is unaffected.
-- **Per-motor telemetry** reads one servo per tick round-robin so bus time per control cycle stays bounded. Joint names that start with a digit get the `joint_` topic prefix (`/motor_telemetry/joint_1/current`), as in the original.
+Worth knowing:
 
-All motor mapping lives in **`src/ros/axon_config.h`** — motor IDs, joint names, directions, command/state indices, speed scales, accelerations, rates, topics, IMU config, node name and domain ID. It mirrors `ddsm210.yaml` + `llmy.yaml`. Edit and reflash to change it.
-
-Known differences from the host packages:
-
-- `JointState.header.stamp` (and the IMU stamps) are **time since boot** (the board has no RTC / synchronized clock). Consumers that need wall-clock stamps should re-stamp on the host.
-- The DDSM position-loop mode of `ddsm210_manager` is not wired up (LLMy uses velocity mode); the driver itself supports it (`ddsm210_set_position`).
-- Startup test sequences (`test_on_startup`) and the configurable brake methods are not ported; velocity-mode stop uses the default `torque_disable` behaviour.
-
----
+- **Wheel speed changes are ramped, not instant.** A `base_cmd` step --
+  reversing direction, or a turn asking the two sides for very different
+  speeds -- doesn't reach the motors as a jump. The actual commanded speed
+  moves toward whatever was last asked for at up to
+  `WHEEL_ACCEL_LIMIT_RAD_S2` (robot.h) rad/s², so the wheel can follow it
+  without skidding across the floor getting there. Lower that constant for
+  a gentler stop/turn, raise it to track the host more closely.
+- **A stale `base_cmd` brakes, hard, not ramped.** If nothing arrives for
+  `COMMAND_TIMEOUT_MS`, every wheel gets the DDSM210's active brake
+  immediately (not the gentle ramp above) — a host that stalls, crashes,
+  or drops the ROS link should not leave the robot coasting on the last
+  thing it heard.
+- **Stamps are time since boot.** The board has no RTC and nothing to sync
+  one against. Re-stamp on the host if it matters.
+- **Every joint appears every time.** A motor that doesn't answer reports
+  zero rather than dropping out, so the slots the host reads never shift.
+- **Missing hardware is not fatal.** Whatever doesn't answer at boot is
+  logged and skipped; its topics still exist and simply stay empty. No fake
+  data is ever published.
+- **`/imu/data` carries no orientation.** The onboard IMU is a raw 6-axis
+  sensor with no fusion engine, so the message sets
+  `orientation_covariance[0] = -1` — the `sensor_msgs/Imu` way of saying the
+  quaternion is meaningless — and leaves the quaternion zeroed. Run
+  `imu_filter_madgwick` or `robot_localization` on the host against
+  `/imu/data` + `/imu/mag` if you need attitude. (The previous firmware
+  published a fused quaternion because it used a BNO055 on the Qwiic
+  connector, which does fusion on-chip.)
+- `linear_acceleration` includes gravity, per the `sensor_msgs/Imu`
+  convention. Covariances are the fixed nominal diagonals in `robot.h` —
+  neither chip reports per-axis variance.
 
 ## Hardware
 
-The board has **two physical servo connectors** (Feetech/STS + a "Dynamixel" connector). Both run the Feetech STS protocol and are presented to the firmware as **one logical servo bus**: each command is broadcast to both channels and replies are merged (servo IDs must be unique across the two connectors). Each DDSM210 gets a dedicated UART because the motor cannot share a TX line without external gating.
-
-| Bus | Pins (`pins.h`) | Notes |
+| Bus | Pins | Notes |
 |---|---|---|
-| Servo bus A (Feetech/STS) | TX 2, RX 3, TXEN 15 | Feetech half-duplex @ 1 Mbaud, PIO0 SM0/1 |
-| Servo bus B (Dynamixel conn.) | TX 12, RX 13, TXEN 14 | same protocol, PIO0 SM2/3 — merged with bus A |
-| DDSM210 front-right / front-left | 32/33, 34/35 | 115200 8N1, PIO1 |
-| DDSM210 back-right / back-left | 36/37, 38/39 | 115200 8N1, PIO2 |
-| Lidar UART | TX 4, RX 5 | hardware `uart1`, default 460800 (RPLidar C1) |
-| BNO055 IMU | SDA 26, SCL 27 | hardware `i2c1`, addr 0x28 |
-| Debug / stdio UART | TX 0, RX 1 | hardware `uart0` |
-| Activity LEDs | 30, 31, 21–24 | classic GPIO (PWM-dimmed), single core — see caveat |
+| Servo bus | TX 7, RX 8, TXEN 16 | Feetech STS/SCS, half duplex, 1 Mbaud. Board-fixed. |
+| Wheels | GP19–26 | Four PIO UARTs, 115200. One motor per port — a DDSM210 can't share a TX line. |
+| Lidar | TX 4, RX 5 | hardware `uart1`, 460800 (RPLidar C1) |
+| IMU | SDA 14, SCL 15 | `i2c1`: LSM6DSOX at 0x6B, MMC5983MA at 0x30. Both soldered to the board; the Qwiic connector is the same bus. |
+| LED strip | GP18 | six WS2812 pixels |
 
-The PIO budget lands exactly at 12/12: PIO0 = the two servo buses (4 SMs), PIO1 + PIO2 = the four wheel motors (8 SMs). The lidar uses the `uart1` hardware peripheral and the LEDs are plain GPIO, so neither consumes a state machine.
+PIO state machines are claimed at init, not assigned by hand: 2 for the
+servo bus, 8 for the wheels, 1 for the LEDs — 11 of the 12 the RP2350 has.
+If a port can't get one, `begin()` says so in the boot log instead of
+failing strangely later.
 
-> **Pin caveats (confirm against the board harness):**
-> - The board routes some activity LEDs to GP34–37, but those pins are taken by the DDSM motors. `LED_FEETECH` (GP30) and `LED_I2C` (GP31) are correct; `LED_UART0`/`UART1`/`CAN`/`RS485` are **placeholders on GP21–24**. Wrong LED pins are cosmetic, not fatal.
-> - Lidar wiring assumes firmware TX = GP4 (uart1 TX) / RX = GP5. Swap the `PIN_LIDAR_*` defines if the connector is reversed.
-
-USB layout (VID:PID `1209:AC01`):
-
-| Interface | Name | Function |
-|---|---|---|
-| CDC #0 | `RoboCore Axon Zenoh` | zenoh serial transport |
-| CDC #1 | `RoboCore Axon Lidar` | lidar UART passthrough |
-| CDC #2 | `RoboCore Axon Debug` | debug log (init info, discovered IDs, status) |
-
-The board also carries a CAN controller (MCP2518FD on SPI) and an RS485 transceiver that this firmware does not currently drive.
-
----
+USB (VID:PID `1209:AC01`) presents three CDC ports: `RoboCore Axon Zenoh`,
+`RoboCore Axon Lidar`, `RoboCore Axon Debug`. The udev rules below turn
+those into stable names.
 
 ## Building
 
-Requires the [pico-sdk](https://github.com/raspberrypi/pico-sdk) (2.x) and an `arm-none-eabi` toolchain. The build selects the RP2350**B** part (`PICO_RP2350A=0` in `CMakeLists.txt`) so GP32–39 are valid.
+Needs the [pico-sdk](https://github.com/raspberrypi/pico-sdk) 2.x and an
+`arm-none-eabi` toolchain.
 
 ```bash
+git submodule update --init          # the libraries in lib/
 export PICO_SDK_PATH=~/pico/pico-sdk
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
+cmake -B build -DCMAKE_BUILD_TYPE=Release && make -C build -j$(nproc)
 ```
 
-Flash by holding BOOT, plugging in, and copying `build/axon_firmware.uf2` to the `RPI-RP2` drive (or `picotool load -f build/axon_firmware.uf2`).
+Flash by holding BOOT while plugging in and copying `build/base101_firmware.uf2`
+to the `RPI-RP2` drive, or `picotool load -f build/base101_firmware.uf2`.
 
-Debug/init logs go to **USB CDC #2** (and mirror to the stdio UART on GP0/1); per-message traffic is *not* logged there.
+The boot log is on USB CDC #2 (`screen /dev/axon-debug 115200`) and tells you
+what answered:
 
----
+```
+=== base101 firmware ===
+[boot ] USB up: CDC0 zenoh, CDC1 lidar, CDC2 this log
+[lidar] uart1 on GP4/5 at 460800 baud
+[wheel] front_left_wheel_joint on GP21/22: online
+...
+[ros  ] connecting to the router on 'serial/cdc#baudrate=921600'...
+[ros  ] session up; declaring 'axon'
+[boot ] up. Going quiet -- watch the LED, or the ROS graph.
+```
+
+It stops there on purpose: in steady state every byte of USB bandwidth
+belongs to the zenoh transport. **The LED takes over from there:**
+
+| Strip | Means |
+|---|---|
+| fast yellow blink | waiting for the ROS router — nothing else can start |
+| slow green breath | connected and running |
+| frozen | the main loop stopped turning |
+
+It is driven from the main loop and from inside every blocking wait, so it
+keeps moving even while the board waits for a router that isn't up yet.
+Colours and rates are in `robot.h`.
 
 ## Host setup
 
@@ -121,154 +172,111 @@ gives you stable symlinks:
 
 - `/dev/axon-zenoh` — zenoh serial transport
 - `/dev/axon-lidar` — lidar passthrough
-- `/dev/axon-debug` — debug log (open with any serial terminal, e.g. `screen /dev/axon-debug 115200`)
+- `/dev/axon-debug` — boot log
 
 ### 2. zenoh router with serial transport
 
-The firmware is a zenoh **client** that connects through its serial link; the host must run a zenoh router listening on that serial port. Serial transport is **not enabled in stock zenohd builds** — you need a zenohd compiled with `--features transport_serial`.
+The firmware is a zenoh **client** connecting through its serial link, so the
+host must run a router listening on that port. Serial transport is **not
+enabled in stock zenohd builds** — you need one compiled with
+`--features transport_serial`.
 
-**Easiest: the Docker image in [`docker/`](docker/)** rebuilds zenohd with that feature on top of `eclipse/zenoh:latest`:
+Easiest is the Docker image in [`docker/`](docker/), which rebuilds zenohd
+with that feature on top of `eclipse/zenoh:latest`:
 
 ```bash
 cd docker
 docker compose up --build      # maps /dev/axon-zenoh, listens serial + tcp/7447
 ```
 
-**From source** instead:
+From source instead:
 
 ```bash
 git clone https://github.com/eclipse-zenoh/zenoh && cd zenoh
 cargo build --release -p zenohd --features transport_serial
-# the baudrate token is required by the locator syntax but meaningless on USB CDC
+# the baudrate token is required by the locator syntax, and meaningless on USB CDC
 ./target/release/zenohd -l 'serial//dev/axon-zenoh#baudrate=921600'
 ```
 
-Keep the router protocol-compatible with the firmware's vendored zenoh-pico (currently **1.9.0**, see `lib/zenoh-pico/include/zenoh-pico.h`).
+Keep the router protocol-compatible with the vendored zenoh-pico (currently
+**1.9.0**, see `lib/zenoh-pico/include/zenoh-pico.h`).
 
 ### 3. ROS 2 with rmw_zenoh
 
-If the serial `zenohd` is your only router, point rmw_zenoh's sessions at it; otherwise federate it with your existing `rmw_zenohd` router:
-
 ```bash
-# option A: single router — also listen on the default tcp port rmw_zenoh expects
+# option A: single router — also listen on the tcp port rmw_zenoh expects
 zenohd -l 'serial//dev/axon-zenoh#baudrate=921600' -l 'tcp/[::]:7447'
 
-# option B: keep rmw_zenohd and bridge the serial router into it
+# option B: keep rmw_zenohd, and federate the serial router into it
 zenohd -l 'serial//dev/axon-zenoh#baudrate=921600' -e 'tcp/localhost:7447'
 ```
 
-Then, in any terminal with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`:
+Then, with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`:
 
 ```bash
 ros2 topic list
 ros2 topic echo /motor_manager/joint_states
-ros2 topic echo /imu/data
-# spin all four wheels at 1 rad/s: [front_left, front_right, back_left, back_right]
+# all four wheels at 1 rad/s: [front_left, front_right, back_left, back_right]
 ros2 topic pub -r 20 /motor_manager/base_cmd std_msgs/msg/Float64MultiArray '{data: [1.0, 1.0, 1.0, 1.0]}'
-# move the arm to home
+# arm to home
 ros2 topic pub --once /motor_manager/arm_cmd std_msgs/msg/Float64MultiArray '{data: [0, 0, 0, 0, 0, 0]}'
 ```
 
 ### 4. Lidar
 
-Point the existing driver at the passthrough port, exactly as before:
+Point `rplidar_ros` at `/dev/axon-lidar` at 460800. The firmware copies bytes
+both ways and follows a baud rate change made on the port, so the driver
+behaves as if the lidar were plugged into the host.
 
-```bash
-ros2 launch rplidar_ros rplidar_c1_launch.py serial_port:=/dev/axon-lidar
-```
+## Libraries
 
----
+Everything below the robot is a library, pulled in as a submodule under
+`lib/`:
 
-## Configuration & test mode
-
-The DDSM wheels are fixed in firmware, but the **ST3215 servos are runtime
-configurable** (how many, their bus IDs and joint names, and whether the servo
-subsystem runs at all). The config lives in flash and is loaded at boot;
-`servos_enabled` defaults to **off**, so out of the box the board is DDSM-only
-and `joint_states` carries just the 4 wheels.
-
-**Entering config mode:** hold the **sniff/config button** (GP32) while powering
-on. The board comes up with USB + motor buses but does **not** start
-zenoh/lidar — it serves an interactive JSON console on the debug port (CDC #2,
-`/dev/axon-debug`). Without the button it boots normally and the debug port is
-status-only.
-
-The 6 WS2812 NeoPixels (GP18) are a mode-at-a-glance indicator: **all breathing
-red** = config mode, **all breathing blue** = normal ROS operation. A frozen
-strip means frozen firmware.
-
-**Console** (one JSON object per line on `/dev/axon-debug`):
-
-| Command | Effect |
+| Library | What it does |
 |---|---|
-| `{"cmd":"get"}` | print current config |
-| `{"cmd":"set","servos_enabled":true,"servos":[{"id":1,"joint":"shoulder","enable":true}, …]}` | update config in RAM |
-| `{"cmd":"save"}` / `{"cmd":"reboot"}` | persist to flash / restart (apply) |
-| `{"cmd":"defaults"}` | reset config to compiled defaults |
-| `{"cmd":"motors"}` | list wheels + servos with online status |
-| `{"cmd":"wheel","index":0,"rpm":30}` / `{"cmd":"stop"}` | spin a wheel / stop all wheels |
-| `{"cmd":"servo","id":1,"pos":2048}` or `"delta":256` | move a servo (absolute ticks / relative) |
-| `{"cmd":"setid","from":1,"to":5}` | change a servo's bus ID (one servo on the bus) |
+| [`pico_serial`](https://github.com/robocore-labs/pico_serial) | The `serial_t` interface every driver speaks, and `serial_hook.h`. |
+| [`pico_cdc_serial`](https://github.com/robocore-labs/pico_cdc_serial) | A USB CDC interface as a `serial_t`. The one place USB stops. |
+| [`hardware_link101`](https://github.com/robocore-labs/hardware_link101) | The board: PIO and UART ports, pin map, LED strip, CAN, and the onboard LSM6DSOX + MMC5983MA. |
+| [`pico_feetech`](https://github.com/robocore-labs/pico_feetech) | Feetech STS/SCS servos. |
+| [`pico_ddsm`](https://github.com/robocore-labs/pico_ddsm) | DDSM210 wheel motors. |
+| [`pico_zenoh`](https://github.com/robocore-labs/pico_zenoh) | zenoh-pico for bare metal, over any `serial_t`. |
+| [`easypicoros`](https://github.com/robocore-labs/easyp) | Typed ROS publishers and subscribers on top of Pico-ROS. |
 
-Config edits apply on the next boot (motor tables / publishers are built at
-startup), so the flow is **set → save → reboot**.
+zenoh-pico, picoros and micro-CDR stay vendored in `lib/` rather than
+submoduled: they are upstream projects we track, and picoros carries a local
+patch (a `user_data` pointer on `picoros_subscriber_t`, without which a typed
+subscriber facade is impossible — easypicoros' build checks for it).
 
-**Web UI:** open `web/axon-config.html` in Chrome/Edge, click *Connect* and pick
-the debug serial port. It edits the servo list, lists and test-drives motors
-(spin wheels / step servos), and changes servo IDs — all over Web Serial, no
-install. It's just a static file; open it directly or serve the `web/` folder.
+### How the pieces fit
 
----
+Every bus in the firmware is a `serial_t`, and the drivers take one. So a
+wheel motor, a servo, the lidar and the zenoh link are all the same kind of
+thing, and nothing below the application knows what USB is.
 
-## Firmware architecture
+The interesting part is **`io_poll()`**. Drivers block waiting for a reply and
+call `serial_task()` while they wait, so every bus is wrapped with
+`serial_hook_init()` to run `io_poll()` there: USB, the lidar bridge and the
+LED keep going *inside* a servo read, a wheel read, or zenoh waiting for a
+router that isn't up yet. One hook, everywhere, with one rule — `io_poll()`
+must never touch a wrapped bus or call into zenoh, or it would be calling
+itself.
 
-### Layout
+## What changed, and why
 
-```
-main.c                      main loop: zenoh rx → I/O poll → telemetry
-src/ros/axon_config.h       ALL robot configuration (motors, IMU, topics, rates)
-src/ros/axon_node.c/.h      Pico-ROS node: subscribers, publishers, conversions
-src/ros/axon_types.h        picoserdes message definitions (names + RIHS01 hashes)
-src/motors/ddsm210.c/.h     DDSM210 protocol (CRC8-MAXIM 10-byte frames)
-src/motors/st3215.c/.h      Feetech STS protocol (ping/mode/torque/move/telemetry)
-src/sensors/bno055.c/.h     BNO055 IMU (I2C, NDOF fusion)
-src/bus/half_duplex.c/.h    merged two-channel Feetech servo bus + transact helper
-src/bus/ddsm_port.c/.h      dedicated PIO UART per DDSM motor (PIO1/PIO2)
-src/bus/lidar_uart.c/.h     lidar on hardware uart1 (forwarded to CDC #1)
-src/led.c/.h                WS2812 NeoPixel mode indicator (red=config, blue=normal), PIO0 SM2
-src/dbg.c/.h                debug logging to USB CDC #2
-src/zenoh_port/             bare-metal zenoh-pico platform port (see below)
-lib/zenoh-pico/             vendored zenoh-pico (pico-ros pinned revision)
-lib/picoros/                vendored Pico-ROS (picoros + picoserdes)
-lib/microcdr/               vendored eProsima Micro-CDR
-docker/                     serial-enabled zenohd image (host router)
-```
+This firmware used to carry its own copies of everything: two near-identical
+PIO UART implementations, the motor drivers, the IMU driver, the zenoh port,
+its own ROS message catalogue. All of it now lives in the libraries above,
+shared with the other Link101 firmwares — around 950 lines that were here are
+gone, and the drivers gained things the old copies never had (SYNC reads for
+whole-chain servo transactions, multiple IMUs per bus).
 
-### The zenoh-pico port (`src/zenoh_port/`)
+**Config mode is gone.** The board used to boot into a JSON console on the
+debug port — held the button at boot, edited the servo list, saved it to
+flash. It was worth having while bringing the hardware up, and nothing used
+it afterwards. The servo list is compiled in (`SERVOS` in `robot.h`), and
+with it went the flash persistence, the console, the bench-test commands, the
+config web page and the button check at boot.
 
-zenoh-pico's stock Raspberry Pi Pico platform requires FreeRTOS and owns the USB descriptors for its serial-over-USB link — both incompatible with this bare-metal composite-USB firmware. Instead the build uses a custom platform profile (`lib/zenoh-pico/cmake/platforms/axon.cmake`, the one file added to the vendored tree):
-
-- **Single-threaded** (`Z_FEATURE_MULTI_THREAD=0`): no tasks, no mutexes. The main loop calls `picoros_single_threaded_loop()` (zenoh rx + periodic keepalive).
-- **`system_axon.c`**: malloc/random/clock/sleep on top of the pico-sdk. The zenoh configuration itself is in `zenoh_generic_config.h` (with a generic platform, zenoh-pico's CMake config values do not apply — that header is the single source of truth).
-- **`serial_axon.c`**: implements zenoh's serial lower layer (`_z_serial_open_from_dev` for device `"cdc"`, read/write) on TinyUSB CDC #0. The zenoh serial protocol above it does COBS framing + CRC32; the same framing is spoken by `zenohd`'s serial transport.
-- **Cooperative blocking**: zenoh's frame reader pulls one byte at a time. The port applies a short timeout at frame boundaries (so an idle link returns "no data" and the main loop keeps spinning at ~`AXON_ZENOH_POLL_TIMEOUT_MS`) and a long timeout mid-frame (so frames in flight aren't corrupted). While waiting, it runs a registered idle poll (`io_poll()` in main.c: TinyUSB, lidar bridge, bus RX rings, LED task) — which must never call back into zenoh.
-- The session handshake gets a temporarily long poll timeout (`axon_zenoh_set_poll_timeout_ms`), and `picoros_interface_init` is retried until `zenohd` shows up, with motors already initialized and the lidar bridge live in the meantime.
-
-Vendored-code changes (kept deliberately minimal):
-
-1. `lib/zenoh-pico/cmake/platforms/axon.cmake` — added platform profile.
-2. `lib/picoros/picoros.c` — `[axon patch]` guards: `zp_start_read_task` / `zp_start_lease_task` / `zp_*_task_is_running` only exist in multi-threaded zenoh-pico builds.
-
-### Main loop timing
-
-One iteration = one `zp_read` (≤ 2 ms idle poll timeout, longer only while frames are arriving) + I/O poll + due telemetry. Motor transactions have hard deadlines (DDSM 4 ms, ST3215 2 ms per attempt) and pump USB + RX rings while waiting, so the lidar stream and zenoh CDC FIFOs survive worst-case bus stalls. At 50 Hz the joint-state pass costs roughly: 4 DDSM odometry reads + 6 ST3215 state reads; the IMU pass adds one I2C sample.
-
----
-
-## Tuning / extending
-
-- **Change motor / IMU mapping, rates, topics**: `src/ros/axon_config.h`.
-- **Add an ST3215 group**: add a motor table + group entry in `axon_config.h`, and a trampoline in `axon_node.c` (`group_trampolines`) if you exceed two groups.
-- **Add a message type**: add its definition (name + RIHS01 hash) to `src/ros/axon_types.h`; type entries can be generated from `.msg` files with [pico-ros type-gen](https://github.com/Pico-ROS/Pico-ROS-software/tree/main/tools/type-gen).
-- **ROS_DOMAIN_ID**: `AXON_ROS_DOMAIN_ID` in `axon_config.h` (must match the host).
-- **Pin assignment**: `pins.h` (see the pin caveats under Hardware).
+The old firmware is kept at
+`../attic/firmware-before-link101-libs/` if you need to look something up.

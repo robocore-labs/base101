@@ -1,0 +1,21 @@
+[submodule "lib/pico_serial"]
+	path = lib/pico_serial
+	url = git@github.com:robocore-labs/pico_serial.git
+[submodule "lib/pico_cdc_serial"]
+	path = lib/pico_cdc_serial
+	url = git@github.com:robocore-labs/pico_cdc_serial.git
+[submodule "lib/pico_zenoh"]
+	path = lib/pico_zenoh
+	url = git@github.com:robocore-labs/pico_zenoh.git
+[submodule "lib/hardware_link101"]
+	path = lib/hardware_link101
+	url = git@github.com:robocore-labs/hardware_link101.git
+[submodule "lib/pico_feetech"]
+	path = lib/pico_feetech
+	url = git@github.com:robocore-labs/pico_feetech.git
+[submodule "lib/pico_ddsm"]
+	path = lib/pico_ddsm
+	url = git@github.com:robocore-labs/pico_ddsm.git
+[submodule "lib/easypicoros"]
+	path = lib/easypicoros
+	url = git@github.com:robocore-labs/easyp.git

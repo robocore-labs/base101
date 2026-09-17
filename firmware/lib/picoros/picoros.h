@@ -183,11 +183,16 @@ typedef struct {
  */
 
 /**
- * @brief Callback function type for subscriber data handling
+ * @brief Callback function type for subscriber data handling.
+ *
+ * [axon patch] Added a `user_data` pointer so the facade (easypicoros) can
+ * thread its own context (e.g. a typed trampoline + deserialization state)
+ * through to the user callback. Upstream picoros passes only the raw bytes.
  */
 typedef void (*picoros_sub_cb_t)(
             uint8_t* rx_data,   /**< Pointer to received data buffer (CDR encoded) */
-            size_t   data_len   /**< Size of received data in bytes */
+            size_t   data_len,  /**< Size of received data in bytes */
+            void*    user_data  /**< Caller-supplied context (from picoros_subscriber_t.user_data) */
             );
 
 /**
@@ -197,6 +202,7 @@ typedef struct {
     z_owned_subscriber_t zsub;         /**< Zenoh subscriber instance */
     rmw_topic_t         topic;         /**< Topic information */
     picoros_sub_cb_t    user_callback; /**< User callback for data handling */
+    void*               user_data;     /**< [axon patch] Caller-supplied context passed to user_callback */
     z_owned_liveliness_token_t lv_token; /**< Liveliness token for subscriber discovery */
 } picoros_subscriber_t;
 

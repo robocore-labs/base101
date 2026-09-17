@@ -140,6 +140,9 @@ static int rmw_zenoh_topic_liveliness_keyexpr(picoros_node_t* node, rmw_topic_t*
    return ret;
 }
 
+// [axon patch] sub_data_handler now receives the picoros_subscriber_t* as
+// `ctx` (instead of the bare callback pointer) so it can forward the
+// subscriber's user_data to the user callback. See picoros_sub_cb_t.
 static void sub_data_handler(z_loaned_sample_t *sample, void *ctx) {
     const z_loaned_bytes_t *b = z_sample_payload(sample);
 
@@ -151,8 +154,9 @@ static void sub_data_handler(z_loaned_sample_t *sample, void *ctx) {
     _z_bytes_to_buf(b, raw_data, raw_data_len);
 
     // Call user callback function if given:
-    if (ctx != NULL) {
-    	((picoros_sub_cb_t)ctx)(raw_data, raw_data_len);
+    picoros_subscriber_t *sub = (picoros_subscriber_t*)ctx;
+    if (sub != NULL && sub->user_callback != NULL) {
+    	sub->user_callback(raw_data, raw_data_len, sub->user_data);
     }
     z_free(raw_data);
 }
@@ -428,8 +432,9 @@ picoros_res_t picoros_subscriber_declare(picoros_node_t* node, picoros_subscribe
     }
 
     z_owned_closure_sample_t callback;
-    z_closure_sample(&callback, sub_data_handler, NULL, NULL);
-    callback._val.context = sub->user_callback;
+    // [axon patch] pass the subscriber struct as the closure context so
+    // sub_data_handler can forward sub->user_data to the user callback.
+    z_closure_sample(&callback, sub_data_handler, NULL, sub);
 
     if ((res = z_declare_subscriber(z_session_loan(&s_wrapper), &sub->zsub, z_view_keyexpr_loan(&ke),
                                     z_closure_sample_move(&callback), NULL)) != Z_OK) {
