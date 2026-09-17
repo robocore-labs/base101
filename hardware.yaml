@@ -1,0 +1,166 @@
+# forge config for base101 on REAL HARDWARE.
+#   forge -p . -f hardware.yaml prep  && forge -p . -f hardware.yaml stage && \
+#   forge -p . -f hardware.yaml build && forge -p . -f hardware.yaml launch
+#
+# Sibling of simulation.yaml. Same four-layer shape — body -> slam -> nav ->
+# robocore agent — plus the two sensor drivers that the sim gets from Gazebo
+# for free and hardware has to run itself.
+#
+# Differences from simulation.yaml, all of them forced by the robot:
+#
+#   * ARM: wired here (arm:=true), but BLOCKED TODAY. robot.launch.py raises
+#     a RuntimeError on arm:=true, deliberately rather than warning:
+#     base101.hardware.xacro emits a ros2_control block for the four wheel
+#     joints only, and controllers.hw.yaml has no arm section. Two things
+#     unblock it — an arm hardware interface in the xacro, and an arm section
+#     in controllers.hw.yaml DECLARING all four controllers (position and
+#     trajectory, arm and gripper) even though only the position pair is
+#     spawned. An undeclared controller cannot be loaded on demand, so
+#     omitting the trajectory entries would leave hardware unable to enter a
+#     TRAJECTORY session at all. Until then this component exits immediately
+#     with that message.
+#   * No GPU, no GUI. Nothing renders on the robot; run RViz on a workstation.
+#   * fastdds, not zenoh. The board is in dumb-bridge mode for now.
+#   * Real sensor drivers (lidar, camera) as their own components —
+#     robot.launch.py launches neither. Device paths and driver packages are
+#     first-cut; Cristi owns the specifics.
+#   * profile base101_hw.yaml, not base101.yaml (real imu/battery/depth topics).
+
+ros_distro: jazzy
+ros_domain_id: 0
+registry: dragomirxyz
+image_prefix: base101_hw
+
+# fastdds is forge's default. The zenoh transport that HARDWARE.md describes
+# belongs to axon-firmware's own compose stack; with the board in dumb-bridge
+# mode there is no second router to coordinate with.
+rmw_implementation: fastdds
+
+hosts:
+  # TODO(cristi): fill these three in before the first deploy — placeholders.
+  # build_on_device is deliberate: native ARM builds beat QEMU emulation by
+  # a wide margin, and the robot is the only ARM machine in the loop.
+  - name: robot
+    ip: base101.local
+    user: cdr
+    arch: arm64
+    manager: true
+    build_on_device: true
+    mount_root: /home/cdr/robocore-deploy
+
+components:
+
+  # The robot's body: robot_state_publisher, ros2_control (the Axon 2 bridge
+  # hardware interface), twist_mux, and the controller spawners.
+  #
+  # slam/nav/agent are separate components below, so this brings up the body
+  # only. rosboard off by default — turn it on when you want the web view.
+  #
+  # NOTE: the wheels arrive over the base101_control_plugin ROS2ControlBridge,
+  # which talks /motor_manager/base_cmd and /motor_manager/joint_states rather
+  # than a serial device — so there is no motor device passthrough here.
+  # Whatever publishes those topics in dumb-bridge mode must be reachable on
+  # this DDS domain; if it turns out to need a serial device on this host, add
+  # it to `devices:` below.
+  - name: drive
+    runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_description
+      - robots/base101/src/base101/base101_control
+      - robots/base101/src/base101/base101_control_plugin
+      - robots/base101/src/base101/base101_bringup_hw
+      - robots/mod101/src/mod101_description   # arm links/meshes
+      - robots/mod101/src/mod101_control       # arm + trajectory controllers
+      - robots/mod101/src/mod101_tool_jaws     # default tool
+    # devices:
+    #   - "/dev/axon-serial:/dev/axon-serial"   # if the bridge is host-side
+    entrypoint: >-
+      ros2 launch base101_bringup_hw robot.launch.py
+      arm:=true camera:=oak_d rosboard:=false
+      slam:=false nav:=false agent:=false
+
+  # RPLidar C1 -> /scan, frame lidar_frame. slam and nav both need this.
+  # TODO(verify): the udev symlink name and whether ros-jazzy-sllidar-ros2
+  # exists for jazzy; if not, swap apt_packages for a `repositories:` entry
+  # pointing at github.com/Slamtec/sllidar_ros2.
+  - name: lidar
+    runs_on: robot
+    repositories:
+      - url: https://github.com/Slamtec/sllidar_ros2.git
+        version: main
+    devices:
+      - "/dev/rplidar:/dev/rplidar"
+    entrypoint: >-
+      ros2 launch sllidar_ros2 sllidar_c1_launch.py
+      serial_port:=/dev/rplidar frame_id:=lidar_frame
+
+  # Luxonis OAK-D on the front bracket.
+  #
+  # USB passthrough is broad on purpose: the OAK-D re-enumerates as a
+  # different USB address when it switches from bootloader to runtime, so
+  # pinning one /dev/bus/usb/NNN/NNN path breaks on every power cycle.
+  #
+  # TODO(verify): confirm the driver stamps camera_optical_frame and
+  # publishes under /oak — base101_hw.yaml's camera topics assume both.
+  - name: camera
+    runs_on: robot
+    privileged: true                 # required for the OAK-D USB re-enumeration
+    repositories:
+      - url: https://github.com/luxonis/depthai-ros.git
+        version: humble             # TODO(verify): jazzy branch if published
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+    entrypoint: ros2 launch depthai_ros_driver camera.launch.py
+
+  # SLAM half: EKF + slam_toolbox (mapping mode; modes switch via service).
+  - name: slam
+    runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_slam
+    entrypoint: ros2 launch base101_slam slam.launch.py use_sim_time:=false
+
+  # Nav2 half. rviz:=false — nothing renders on the robot.
+  - name: nav
+    runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_nav
+    entrypoint: >-
+      ros2 launch base101_nav nav.launch.py
+      use_sim_time:=false rviz:=false
+
+  # The robocore agent: the semantic bridge, client API on 10101.
+  #
+  # ipc_mode: host is LOAD-BEARING, not a tuning knob. The agent writes camera
+  # frames, depth, clouds and scans into /dev/shm and sends the client only a
+  # descriptor to mmap (robocore_agent/shm.py:30). A container gets its own
+  # /dev/shm, so without this every sensing call hands the client a segment
+  # name it cannot open. Docker's default /dev/shm is also 64 MB against the
+  # store's 192 MiB budget (shm.py:35), so host IPC fixes the size too.
+  - name: agent
+    runs_on: robot
+    optimisations:
+      - mount_shm: true      # bind /dev/shm so the client can mmap the descriptors
+      - shm: 256m            # headroom over ShmStore's 192 MiB budget
+    ports:
+      - "10101:10101"        # robocore client connects here
+    # `engine` is NOT a ROS package (pyproject.toml, no package.xml), so forge
+    # skips it at stage time and neither pip_packages nor postinstall can
+    # install it (both run before the source COPY). Deps come from PyPI at
+    # build time; the package itself is mounted into site-packages.
+    # Quoted so the shell does not eat them: forge joins pip_packages into an
+    # unquoted `RUN pip install ...`, and bare >= is a REDIRECT in bash
+    # (websockets>=12 becomes `websockets` plus `> =12`), so the floors were
+    # silently dropped. The inner quotes are deliberate.
+    pip_packages:
+      - "'websockets>=12'"
+      - "'numpy>=1.24'"
+      - "'pydantic>=2.5'"
+    volumes:
+      - ./robots/profiles:/profiles:ro
+      - ./engine/robocore:/opt/venv/lib/python3.12/site-packages/robocore:ro
+    source:
+      - agent/src/robocore_agent          # robot-agnostic: lives outside robots/
+    entrypoint: >-
+      ros2 run robocore_agent agent
+      --profile /profiles/base101_arm_hw.yaml
+      --ros-args -p use_sim_time:=false

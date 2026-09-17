@@ -1,0 +1,20 @@
+{
+  "recorded": "2026-08-25T14:07:44.710597+00:00",
+  "group": "arm",
+  "tip": "arm_wrist_flange",
+  "joints": [
+    "arm_joint_base",
+    "arm_joint_shoulder",
+    "arm_joint_elbow",
+    "arm_joint_wrist_tilt",
+    "arm_joint_wrist_roll"
+  ],
+  "links": 62,
+  "pairs": 609,
+  "unmodelled": [],
+  "samples": 150000,
+  "resolution": 0.02,
+  "format": 1,
+  "robot": "base101-arm",
+  "sha": "a2b4197ebb1cd3b94789e6c21b45a2b730bdb6eb41a0f0e089668f7c3b1735b5"
+}

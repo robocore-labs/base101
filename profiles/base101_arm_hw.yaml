@@ -1,0 +1,157 @@
+# base101 REAL HARDWARE profile: mobility + sensing + slam + arm.
+#
+# Split out from base101.yaml on 2026-08-23. That file claimed to serve both
+# sim and hardware, but three of its entries are sim-only and would have been
+# silently dead on the real robot:
+#
+#   imu.topic       /sensors/imu    -> gz imu; the real BNO055 is /imu/data
+#   status.battery  /fake_battery   -> a test fixture, not a BMS
+#   cameras.depth   /base_camera/*  -> the sim's co-located depth sensor
+#
+# A wrong topic here does not error. The capability is advertised, the
+# subscription never fires, and the call blocks until it times out — which is
+# why these are worth a separate file rather than a comment.
+#
+# ARM: declared here, but NOT YET DRIVABLE ON HARDWARE. base101_bringup_hw
+# raises a RuntimeError on arm:=true — base101.hardware.xacro emits a
+# ros2_control block for the four wheel joints only, and controllers.hw.yaml
+# has no arm section. Two things unblock it:
+#
+#   1. an arm hardware interface in base101.hardware.xacro
+#   2. an arm section in controllers.hw.yaml DECLARING both the position and
+#      trajectory pairs. Only the position pair is spawned at boot; the agent
+#      loads a trajectory controller on demand at control-session entry
+#      (Phase 6 decision 9). Declaring is the precondition — load_controller
+#      needs the type and params already on the controller_manager, so
+#      omitting the trajectory entries makes TRAJECTORY sessions impossible
+#      rather than merely slow.
+#
+# The manipulation block below mirrors base101_arm.yaml so that when the
+# hardware interface lands, only the controller names need checking.
+#
+# Companion forge config: hardware.yaml at the repo root.
+name: base101
+model: base101 + 1 mod101 arm (hardware)
+version: "0"
+protocol: 1
+
+frames:
+  map: map
+  odom: odom
+  base: base_link
+
+mobility:
+  locomotion: differential          # 4WD skid steer presents as diff drive
+  cmd_vel: /cmd_vel_agent           # twist_mux input, priority 50
+  cmd_vel_stamped: true             # Jazzy twist_mux (use_stamped) wants TwistStamped
+  odom_topic: /diff_drive_controller/odom
+  nav2_navigate_to_pose: /navigate_to_pose
+  # No nav2_follow_waypoints: base101_nav launches no waypoint_follower.
+  max_linear: 0.5                   # m/s, measured: DDSM210 rated-speed reality
+  max_angular: 1.5                  # rad/s safety clamp
+
+# Luxonis OAK-D on the front bracket (camera:=oak_d).
+#
+# camera_optical_frame is deliberately shared with the RealSense variant and
+# with the sim — chassis.xacro:805-815 keeps the frame graph identical
+# whichever module is fitted, and both realsense2_camera and depthai stamp
+# that name. So `frame`/`optical` below are correct as written.
+#
+# TODO(verify against a live driver): the topic names assume
+# depthai_ros_driver's default `/oak` namespace. Confirm with
+# `ros2 topic list` once the camera component is up, and remap the driver if
+# it does not stamp camera_optical_frame.
+groups:
+  arm:
+    kind: arm
+    # Mirrors base101_arm.yaml - same mod101 macro, prefix "arm_"; see
+    # there for why the tip is the flange and not a jaw frame, and why
+    # yaw rather than pitch is the masked axis.
+    tip: arm_wrist_flange
+    dof_mask: [1, 1, 1, 1, 1, 0]
+    controllers:
+      # BOTH names come from the not-yet-written arm section of
+      # controllers.hw.yaml. That section must DECLARE the trajectory
+      # controller even though only the position one is spawned: an
+      # undeclared controller cannot be loaded on demand, so hardware
+      # would be unable to enter a TRAJECTORY session at all (6.0b).
+      # Verify against `ros2 control list_controllers` once it exists.
+      trajectory: /arm_trajectory_controller
+      stream: /arm_controller
+      tool: /gripper_controller
+    tool:
+      type: jaws
+      joint: arm_6
+      # MEASURED FROM THE GEOMETRY, 2026-08-26, and it is the OPPOSITE of
+      # what this file said until now. Transforming the jaw meshes' fitted
+      # bounds through the arm_6 joint, the gap between the fixed jaw
+      # (arm_jaws_body) and the moving one (arm_jaws_moving) is:
+      #
+      #   arm_6 = 0.00 -> 0.0338 m      arm_6 = 1.60 -> 0.0741 m
+      #   arm_6 = 0.50 -> 0.0500 m      arm_6 = 2.14 -> 0.0783 m
+      #   arm_6 = 1.07 -> 0.0649 m
+      #
+      # Monotonically WIDER with the joint angle. Those are centre-to-
+      # centre distances; subtracting the half-extents along that axis
+      # (~0.010 + ~0.027) puts the jaws touching at 0.0 and about 42 mm
+      # apart at 2.14.
+      #
+      # The previous values came from reading the sim by eye on
+      # 2026-08-25, at a time when arm_6 did not actuate — so the jaws
+      # were at their spawn value and never seen to move. This is the
+      # check that comment asked for. The symptom of the old values was a
+      # gripper that visibly opened when told to close, and an
+      # `is_holding` that was correctly False every time.
+      open: 2.14
+      closed: 0.0
+    workspace:
+      # base_link frame. NOT measured - a deliberately conservative first
+      # box, sized from the mod101 link lengths in the description so that
+      # nothing reachable inside it intersects the chassis. Tighten it
+      # against a real reach test before trusting it as a safety clamp.
+      # NOTHING enforces it yet: the FK workspace box is a Phase 7 item
+      # ("safety at rate"), not 6.4.
+      box:
+        x: [-0.15, 0.55]
+        y: [-0.45, 0.45]
+        z: [0.20, 0.85]
+
+cameras:
+  base:
+    rgb: /oak/rgb/image_raw
+    depth: /oak/stereo/image_raw
+    info: /oak/rgb/camera_info
+    frame: camera_optical_frame
+    optical: true                   # REQUIRED — without it deproject/get_cloud
+                                    # come out 90 degrees wrong with no error
+
+lidar:
+  scan: /scan                       # RPLidar C1, frame lidar_frame
+
+imu:
+  topic: /imu/data                  # BNO055 on the Axon 2 board, frame imu_link,
+                                    # 50 Hz. Also /imu/mag and /imu/temperature.
+
+slam:
+  backend: slam_toolbox
+  map_dir: ~/.robocore/maps
+
+teleop:
+  max_watchdog: 1.0                 # seconds; clients may request shorter, never longer
+
+audit:
+  retention_mb: 200
+
+watches: {}                         # dotted-path condition monitors
+
+places: {}                          # named poses, stored per-map
+
+
+# No `status.battery`: the Axon 2 topic contract (HARDWARE.md) is
+# /motor_manager/* plus /imu/*. There is no BMS topic yet. Declaring one
+# would advertise a battery capability that never produces a reading —
+# add it here when the BMS lands.
+
+safety:
+  stop_on_disconnect: true
+  confirm_required: []

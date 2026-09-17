@@ -1,0 +1,28 @@
+# udev rules for the RoboCore Axon ROS node board
+#
+# Creates stable /dev/axon-* symlinks for the three CDC ports:
+#   /dev/axon-zenoh  - zenoh serial transport (point zenohd here)
+#   /dev/axon-lidar  - lidar UART passthrough (point rplidar_ros here)
+#   /dev/axon-debug  - debug log (init info, discovered IDs, status)
+#
+# Installation:
+#   sudo cp 99-axon-devices.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="ac01", ATTRS{interface}=="RoboCore Axon Zenoh", \
+    SYMLINK+="axon-zenoh", MODE="0666", GROUP="dialout"
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="ac01", ATTRS{interface}=="RoboCore Axon Lidar", \
+    SYMLINK+="axon-lidar", MODE="0666", GROUP="dialout"
+
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="ac01", ATTRS{interface}=="RoboCore Axon Debug", \
+    SYMLINK+="axon-debug", MODE="0666", GROUP="dialout"
+
+# RP2350 / RP2040 in BOOTSEL mode (ROM bootloader, Raspberry Pi vendor ID).
+# picotool talks to this raw USB (PICOBOOT) device, so without these it fails
+# with "unable to connect ... try sudo". uaccess grants the logged-in user;
+# MODE/GROUP are a fallback for non-logind setups and already-attached devices.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000f", \
+    MODE="0666", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0003", \
+    MODE="0666", GROUP="plugdev", TAG+="uaccess"
