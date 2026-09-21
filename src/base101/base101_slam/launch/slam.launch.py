@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""base101 SLAM stack: EKF odometry fusion + slam_toolbox.
+"""base101 SLAM stack: sim-only supplementary EKF + slam_toolbox.
 
 Launches the localization half of the robot's autonomy: it stays up for
 the whole session, starts in mapping mode, and the robocore bridge
@@ -11,6 +11,16 @@ Independent of base101_nav by design: each stack has its own lifecycle
 manager, so Nav2 can start, run and die without slam_toolbox and vice
 versa. The only coupling is the /map topic and the map->odom TF this
 stack publishes.
+
+EKF (robot_localization) only runs here under use_sim_time:=true — sim's
+diff_drive_controller already publishes odom -> base_link itself
+(enable_odom_tf:true, see base101_control/config/controllers.sim.yaml), so
+this EKF is a supplementary sim-only filter, not the transform's owner.
+Hardware's EKF is a different instance entirely, launched unconditionally
+from base101_bringup_hw/launch/robot.launch.py instead of from here — the
+Axon 2 firmware only exposes raw wheel odometry + raw IMU, no fused
+odometry and no TF of its own, so there's no scenario on hardware where
+this stack's EKF should be optional. See HARDWARE.md's topic contract.
 
     ros2 launch base101_slam slam.launch.py use_sim_time:=true
 """
@@ -32,19 +42,22 @@ def _setup(context, *args, **kwargs):
     if not slam_config:
         slam_config = os.path.join(pkg_dir, 'config', 'slam_toolbox.yaml')
 
-    # Sim and real robot fuse different sensors (and the sim config
-    # tolerates the missing ones); pick by use_sim_time.
-    ekf_config = os.path.join(
-        pkg_dir, 'config', 'ekf.sim.yaml' if use_sim_time else 'ekf.yaml')
+    nodes = []
 
-    ekf = Node(
-        package='robot_localization',
-        executable='ekf_node',
-        name='ekf_filter_node',
-        output='screen',
-        parameters=[ekf_config, {'use_sim_time': use_sim_time}],
-        remappings=[('odometry/filtered', '/odometry/filtered')],
-    )
+    if use_sim_time:
+        # Supplementary only — sim's diff_drive_controller already publishes
+        # odom -> base_link itself, so ekf.sim.yaml sets publish_tf:false.
+        # See the module docstring for hardware's (different, unconditional)
+        # EKF instance.
+        ekf_config = os.path.join(pkg_dir, 'config', 'ekf.sim.yaml')
+        nodes.append(Node(
+            package='robot_localization',
+            executable='ekf_node',
+            name='ekf_filter_node',
+            output='screen',
+            parameters=[ekf_config, {'use_sim_time': use_sim_time}],
+            remappings=[('odometry/filtered', '/odometry/filtered')],
+        ))
 
     slam_toolbox = Node(
         package='slam_toolbox',
@@ -53,6 +66,7 @@ def _setup(context, *args, **kwargs):
         output='screen',
         parameters=[slam_config, {'use_sim_time': use_sim_time}],
     )
+    nodes.append(slam_toolbox)
 
     # slam_toolbox is a LifecycleNode that does NOT self-activate; it
     # sits in `unconfigured` until something drives configure->activate.
@@ -62,7 +76,7 @@ def _setup(context, *args, **kwargs):
     # 30000 ms" 200 ms later, looping deactivate/reactivate forever);
     # disabling it keeps the one useful job (autostart) without the
     # broken watchdog. Crash supervision is the robocore bridge's job.
-    # EKF is not a lifecycle node and is not managed.
+    # EKF (when present) is not a lifecycle node and is not managed.
     lifecycle_manager = TimerAction(
         period=3.0,
         actions=[Node(
@@ -78,8 +92,9 @@ def _setup(context, *args, **kwargs):
             }],
         )],
     )
+    nodes.append(lifecycle_manager)
 
-    return [ekf, slam_toolbox, lifecycle_manager]
+    return nodes
 
 
 def generate_launch_description():

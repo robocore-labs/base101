@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_lidar</name>
+  <version>0.1.0</version>
+  <description>
+    RPLidar C1 driver + self-filter for base101. Wraps rplidar_ros with the
+    base101-specific serial port/baud/frame defaults and a laser_filters
+    chain that blanks the angular sector where base101's own payload deck
+    (standoffs, Jetson/link101 mounts) sits in the scan plane — see
+    config/lidar_filters.yaml for the geometry this is derived from.
+  </description>
+
+  <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rplidar_ros</exec_depend>
+  <exec_depend>laser_filters</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

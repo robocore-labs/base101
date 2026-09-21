@@ -11,20 +11,16 @@ The sim-only arguments (`world`, `camera`) are the only difference.
 
 Startup order:
 
-    robot_state_publisher + ros2_control_node + twist_mux   (immediately)
-      -> +3 s: joint_state_broadcaster
-        -> +5 s: diff_drive_controller
-          -> +10 s: slam + nav2
+    robot_state_publisher + twist_mux + EKF   (immediately)
+      -> +10 s: slam + nav2
 
-Unlike the sim there is no spawn event to hang the controller chain off —
-ros2_control_node is a plain process, so the spawners are timed. The delays
-are generous on purpose: a spawner that fires before the resource manager has
-claimed the hardware fails outright rather than retrying.
-
-The wheels come up through base101_control_plugin/ROS2ControlBridge, which
-bridges diff_drive_controller's per-wheel velocity interfaces to the Axon 2
-firmware's /motor_manager topics over zenoh. Start the host zenoh router and
-rmw_zenoh first — see HARDWARE.md.
+There is no ros2_control on the host side: the Axon 2 firmware owns
+locomotion (talks /link101/cmd_vel straight over zenoh) but only exposes
+raw wheel-encoder odometry and raw IMU — no fused odometry, no TF. The EKF
+below is what turns those into odom -> base_link and /odom; it's the one
+and only publisher of either on hardware, unconditional (not gated behind
+slam:=/nav:=). Start the host zenoh router and rmw_zenoh first — see
+HARDWARE.md.
 
 See docs/bringup-restructure.md.
 """
@@ -98,17 +94,16 @@ def _setup(context, *args, **kwargs):
 
     if arm:
         # Deliberately fatal rather than a warning that scrolls past. The
-        # hardware xacro emits a ros2_control block for the four wheel joints
-        # only, and controllers.hw.yaml has no arm section — so arm:=true
-        # would load an arm nothing can drive, and the spawners would fail on
-        # unclaimable interfaces. See docs/findings-open.md.
+        # hardware xacro covers the four wheel joints only — the firmware has
+        # no arm control loop yet. See docs/findings-open.md.
         raise RuntimeError(
             'arm:=true is not supported on hardware yet: there is no arm '
-            'hardware interface (base101.hardware.xacro covers the wheels '
-            'only) and no arm section in controllers.hw.yaml. The arm is '
-            'sim-only for now — use base101_bringup_gazebo arm:=true.')
+            'control path on the Axon 2 firmware (base101.hardware.xacro '
+            'covers the wheels only). The arm is sim-only for now — use '
+            'base101_bringup_gazebo arm:=true.')
 
     pkg_control = get_package_share_directory('base101_control')
+    pkg_slam = get_package_share_directory('base101_slam')
 
     # Command/xacro rather than xacro.process_file: the hardware description is
     # small and this keeps the URDF a launch substitution, so a bad xacro shows
@@ -121,7 +116,6 @@ def _setup(context, *args, **kwargs):
         value_type=str,
     )
 
-    controllers_cfg = os.path.join(pkg_control, 'config', 'controllers.hw.yaml')
     twist_mux_cfg = os.path.join(pkg_control, 'config', 'twist_mux.yaml')
 
     robot_state_publisher = Node(
@@ -132,22 +126,36 @@ def _setup(context, *args, **kwargs):
                      'use_sim_time': False}],
     )
 
-    ros2_control_node = Node(
-        package='controller_manager',
-        executable='ros2_control_node',
-        output='screen',
-        parameters=[{'robot_description': robot_description,
-                     'use_sim_time': False},
-                    controllers_cfg],
-    )
-
     twist_mux = Node(
         package='twist_mux',
         executable='twist_mux',
         name='twist_mux',
         output='screen',
+        # No override here: twist_mux.yaml's use_stamped:true applies on
+        # hardware too. There's no diff_drive_controller on hardware anymore;
+        # the Axon 2 firmware subscribes /link101/cmd_vel (TwistStamped) —
+        # see HARDWARE.md's topic contract.
         parameters=[twist_mux_cfg, {'use_sim_time': False}],
-        remappings=[('cmd_vel_out', '/diff_drive_controller/cmd_vel')],
+        remappings=[('cmd_vel_out', '/link101/cmd_vel')],
+    )
+
+    # The Axon 2 firmware only publishes raw wheel-encoder odometry
+    # (/link101/odom/raw) and raw IMU (/link101/imu, no orientation) — it
+    # doesn't fuse them or publish TF itself. This EKF does both: fuses
+    # wheel vx + wheel/gyro yaw rate, publishes odom -> base_link
+    # (publish_tf:true in ekf.hw.yaml) and /odom. Unconditional, unlike
+    # sim's EKF (base101_slam/launch/slam.launch.py, sim-only because
+    # diff_drive_controller already owns odom -> base_link there) — on
+    # hardware there is no other source of that transform to fall back on,
+    # slam/nav on or off. See HARDWARE.md's topic contract.
+    ekf = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        parameters=[os.path.join(pkg_slam, 'config', 'ekf.hw.yaml'),
+                    {'use_sim_time': False}],
+        remappings=[('odometry/filtered', '/odom')],
     )
 
     rosboard = Node(
@@ -159,21 +167,23 @@ def _setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration('rosboard')),
     )
 
-    def spawner(name):
-        return Node(
-            package='controller_manager',
-            executable='spawner',
-            arguments=[name, '--controller-manager', '/controller_manager'],
-            output='screen',
-        )
+    # Answers the firmware's 1 Hz time-sync probes so it can stamp
+    # /link101/imu* in host time. Purely reactive (no timer), always on,
+    # exactly one per board — see base101_time/README.md.
+    base101_time = Node(
+        package='base101_time',
+        executable='time_sync',
+        name='base101_time',
+        output='screen',
+        parameters=[{'use_sim_time': False}],
+    )
 
     actions = [
         robot_state_publisher,
-        ros2_control_node,
         twist_mux,
+        base101_time,
+        ekf,
         rosboard,
-        TimerAction(period=3.0, actions=[spawner('joint_state_broadcaster')]),
-        TimerAction(period=5.0, actions=[spawner('diff_drive_controller')]),
     ]
 
     tail = []
@@ -206,14 +216,15 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'arm', default_value='false', choices=['true', 'false'],
             description='Mount one mod101 arm. NOT SUPPORTED ON HARDWARE YET '
-                        '— there is no arm hardware interface; this errors out.'),
+                        '— the firmware has no arm control path; this errors out.'),
         DeclareLaunchArgument(
             'nav', default_value='true', choices=['true', 'false'],
             description='Nav2 (planner, controller, bt_navigator, smoother).'),
         DeclareLaunchArgument(
             'slam', default_value='true', choices=['true', 'false'],
-            description='EKF + slam_toolbox. Nav2 needs the map frame this '
-                        'publishes.'),
+            description='slam_toolbox (map -> odom). Nav2 needs the map '
+                        'frame this publishes. The EKF that publishes '
+                        'odom -> base_link runs regardless of this flag.'),
         DeclareLaunchArgument(
             'agent', default_value='true', choices=['true', 'false'],
             description='Run the robocore agent (JSON-RPC bridge) against '

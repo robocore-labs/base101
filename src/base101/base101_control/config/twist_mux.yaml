@@ -1,14 +1,14 @@
 # Twist multiplexer for /cmd_vel sources.
 #
-# Input topics are subscribed as plain geometry_msgs/Twist (twist_mux's
-# VelocityTopicHandle is hardcoded to that type). The cmd_vel_out remap (set
-# in the launch) wires the output to /diff_drive_controller/cmd_vel.
+# use_stamped:true makes twist_mux subscribe its input topics (cmd_vel_joy,
+# cmd_vel_key, etc.) AND publish its output as TwistStamped (confirmed
+# empirically on Jazzy — it's not just the output path). The cmd_vel_out
+# remap (set in the launch) wires the output to /diff_drive_controller/cmd_vel
+# in sim, or straight to /link101/cmd_vel (the Axon 2 firmware) on hardware —
+# both downstreams take TwistStamped, so this applies unchanged on both.
 #
-# use_stamped MUST be true on Jazzy: diff_drive_controller's subscription is
-# TwistStamped-only (the old use_stamped_vel toggle was removed). Setting it
-# here makes twist_mux pick its cmd_pub_stamped_ output path so the controller
-# actually receives commands. Leave this on unless you intentionally point
-# twist_mux at a different downstream that takes unstamped Twist.
+# Leave this on unless you intentionally point twist_mux at a different
+# downstream that takes unstamped Twist end-to-end (inputs included).
 twist_mux:
   ros__parameters:
     use_stamped: true

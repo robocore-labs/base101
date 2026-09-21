@@ -15,9 +15,10 @@
 
   <depend>xacro</depend>
 
-  <!-- chassis.gazebo.ros2control names gz_ros2_control/GazeboSimSystem; the
-       wheel hardware bridge plugin is base101_control_plugin (real hw). Both
-       are runtime lookups resolved by the variant that includes this. -->
+  <!-- chassis.gazebo.ros2control names gz_ros2_control/GazeboSimSystem, a
+       runtime lookup resolved by the variant that includes this. Real
+       hardware has no ros2_control plugin anymore — the Axon firmware owns
+       locomotion itself. -->
   <exec_depend>gz_ros2_control</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

@@ -37,8 +37,13 @@ def _setup(context, *args, **kwargs):
     rviz = LaunchConfiguration('rviz').perform(context) == 'true'
 
     config = {name: os.path.join(pkg_dir, 'config', f'{name}.yaml')
-              for name in ('planner', 'controller', 'bt_navigator',
-                           'velocity_smoother', 'costmap')}
+              for name in ('planner', 'costmap')}
+    # Sim and real robot get odometry from different topics
+    # (/diff_drive_controller/odom vs the host-side EKF's /odom — see
+    # HARDWARE.md) — everything else in these three is identical.
+    variant = 'sim' if use_sim_time else 'hw'
+    for name in ('controller', 'bt_navigator', 'velocity_smoother'):
+        config[name] = os.path.join(pkg_dir, 'config', f'{name}.{variant}.yaml')
     bt_dir = os.path.join(pkg_dir, 'behavior_trees')
 
     planner_server = Node(

@@ -1,13 +1,19 @@
-# MPPI controller for the base101 differential drive base.
+# MPPI controller for the base101 differential drive base — sim.
 #
 # Adopted from TurtleBot4's nav2.yaml (which itself follows nav2_bringup
 # defaults). Velocity caps raised to match base101's hardware envelope.
 # Critic weights left at canonical values — they are well-tuned for
 # generic diff-drive indoor navigation; only revisit if a specific
 # behavior is wrong.
+#
+# Sibling of controller.hw.yaml; only odom_topic differs (see below) —
+# nav2_controller::ControllerServer defaults odom_topic to plain "odom",
+# which nothing publishes on either sim or hardware, so it has to be set
+# explicitly on both.
 
 controller_server:
   ros__parameters:
+    odom_topic: /diff_drive_controller/odom
     enable_stamped_cmd_vel: true
     controller_frequency: 20.0          # Nav2 default
     costmap_update_timeout: 0.30

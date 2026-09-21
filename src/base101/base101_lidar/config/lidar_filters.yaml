@@ -1,0 +1,52 @@
+# laser_filters chain for the RPLidar C1 on base101, run by
+# scan_to_scan_filter_chain (see ../launch/lidar.launch.py): consumes the raw
+# driver output on /scan_raw, publishes the filtered result on /scan_filtered
+# for slam/nav to consume.
+#
+# Top-level key is the wildcard /** rather than a specific node name: ROS 2
+# only applies a YAML file's parameters to a node whose resolved name
+# matches that key exactly, and the launch file gives this node a custom
+# name (lidar_self_filter) rather than the executable's default
+# (scan_to_scan_filter_chain) — a literal `scan_to_scan_filter_chain:` key
+# here would silently match nothing, leaving the filter chain empty (no
+# filters loaded, /scan_filtered just a copy of /scan_raw).
+#
+# Keeps only the forward 180 deg of the physical robot and blanks
+# everything else — a deliberate hard cutoff, not a geometry-fitted one.
+# (An earlier version derived a tighter, geometry-specific cutoff from
+# base101.hardware.xacro / chassis.xacro — the payload deck's
+# standoffs/link101 mount/compute tray start around bearing 109 deg — but
+# this is now a flat 180 deg window regardless of what's actually in view
+# at a given bearing.)
+#
+# IMPORTANT: filter1 blanks SCAN bearing -90..+90 deg, which is the
+# PHYSICAL REAR, not front — confirmed (2026-09-21) raw /scan's angle=0 is
+# the physical rear. This is a property of the raw driver output itself,
+# unrelated to TF: chassis.xacro's lidar_frame_joint carries a matching
+# yaw=pi correction so TF-based consumers (SLAM, costmaps) agree with this
+# filter, but that joint doesn't change what angle=0 in the raw /scan
+# message itself means — this filter has to independently know it's
+# blanking the rear when it operates on scan bearing -90..+90, same as
+# lidar_frame_joint's comment explains for the TF side. A single filter
+# suffices (rather than two wrapping through +-180) because -90..+90
+# doesn't cross that boundary.
+/**:
+  ros__parameters:
+    filter1:
+      name: blank_rear
+      type: laser_filters/LaserScanAngularBoundsFilterInPlace
+      params:
+        lower_angle: -1.5708  # -90 deg scan bearing == physical rear, see above
+        upper_angle: 1.5708   # +90 deg scan bearing == physical rear, see above
+    filter2:
+      # General min-range clamp: strips stray close-in noise (dust
+      # cover/motor housing reflections, sensor blind zone) regardless of
+      # angle, independent of the -90/+90 cutoff above.
+      name: blank_below_min_range
+      type: laser_filters/LaserScanRangeFilter
+      params:
+        use_message_range_limits: false
+        lower_threshold: 0.05
+        upper_threshold: .inf
+        lower_replacement_value: .inf
+        upper_replacement_value: .inf

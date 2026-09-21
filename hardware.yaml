@@ -9,18 +9,22 @@
 # Differences from simulation.yaml, all of them forced by the robot:
 #
 #   * ARM: wired here (arm:=true), but BLOCKED TODAY. robot.launch.py raises
-#     a RuntimeError on arm:=true, deliberately rather than warning:
-#     base101.hardware.xacro emits a ros2_control block for the four wheel
-#     joints only, and controllers.hw.yaml has no arm section. Two things
-#     unblock it — an arm hardware interface in the xacro, and an arm section
-#     in controllers.hw.yaml DECLARING all four controllers (position and
-#     trajectory, arm and gripper) even though only the position pair is
-#     spawned. An undeclared controller cannot be loaded on demand, so
-#     omitting the trajectory entries would leave hardware unable to enter a
-#     TRAJECTORY session at all. Until then this component exits immediately
-#     with that message.
+#     a RuntimeError on arm:=true, unconditionally — there's no ros2_control
+#     anywhere on hardware anymore (sim or hw), so the old "controllers.hw.yaml
+#     has no arm section" reasoning no longer applies; that file is gone
+#     entirely (see base101_control/README.md). The Axon 2 firmware documents
+#     /motor_manager/arm_cmd for a future arm bring-up (HARDWARE.md's "Tower /
+#     arms"), but nothing on the host talks to it yet — no controller, no
+#     EKF input, nothing. Until that lands, this component exits immediately.
 #   * No GPU, no GUI. Nothing renders on the robot; run RViz on a workstation.
-#   * fastdds, not zenoh. The board is in dumb-bridge mode for now.
+#   * TODO(verify): fastdds below predates the current firmware entirely (it
+#     assumed the retired dumb-bridge/base101_control_plugin integration —
+#     see the `drive` component's comment). The Axon 2 firmware this file's
+#     /link101/* topics (via base101_bringup_hw/launch/robot.launch.py) now
+#     assume is zenoh-only (HARDWARE.md) — fastdds can't reach it at all.
+#     hardware.drive.yaml is the zenoh config that actually works today;
+#     this file needs the same treatment (or to be retired) before it's
+#     useful for anything beyond building the arm packages.
 #   * Real sensor drivers (lidar, camera) as their own components —
 #     robot.launch.py launches neither. Device paths and driver packages are
 #     first-cut; Cristi owns the specifics.
@@ -31,9 +35,9 @@ ros_domain_id: 0
 registry: dragomirxyz
 image_prefix: base101_hw
 
-# fastdds is forge's default. The zenoh transport that HARDWARE.md describes
-# belongs to axon-firmware's own compose stack; with the board in dumb-bridge
-# mode there is no second router to coordinate with.
+# fastdds is forge's default — but see the TODO(verify) above: this can't
+# actually reach the real board's zenoh-only link, so this whole file is
+# unusable against the current firmware regardless of the arm:=true block.
 rmw_implementation: fastdds
 
 hosts:
@@ -50,48 +54,60 @@ hosts:
 
 components:
 
-  # The robot's body: robot_state_publisher, ros2_control (the Axon 2 bridge
-  # hardware interface), twist_mux, and the controller spawners.
+  # The robot's body: robot_state_publisher, twist_mux, and a host-side EKF
+  # (robot_localization) fusing the firmware's raw wheel odom + raw IMU into
+  # /odom and odom -> base_link — no ros2_control, no motor_manager bridge.
+  # base101_control_plugin (the old ROS2ControlBridge, talking
+  # /motor_manager/base_cmd + /motor_manager/joint_states as a host-side
+  # hardware_interface) is retired — moved to attic/ — along with the
+  # dumb-bridge integration it implemented; base101.hardware.xacro has no
+  # <ros2_control> block at all now. See HARDWARE.md's topic contract for
+  # what's current (namespaced /link101/* topics over zenoh, not fastdds —
+  # see the `fastdds, not zenoh` note above, which predates this and is now
+  # itself stale; this component cannot reach the real board until that's
+  # reconciled, on top of being blocked on arm:=true below).
   #
   # slam/nav/agent are separate components below, so this brings up the body
   # only. rosboard off by default — turn it on when you want the web view.
   #
-  # NOTE: the wheels arrive over the base101_control_plugin ROS2ControlBridge,
-  # which talks /motor_manager/base_cmd and /motor_manager/joint_states rather
-  # than a serial device — so there is no motor device passthrough here.
-  # Whatever publishes those topics in dumb-bridge mode must be reachable on
-  # this DDS domain; if it turns out to need a serial device on this host, add
-  # it to `devices:` below.
+  # base101_slam/base101_nav aren't launched here (slam:=false nav:=false
+  # below); base101_time always runs, unconditionally, from robot.launch.py.
+  # But base101_bringup_hw's package.xml exec_depends on all three regardless,
+  # so all three have to be BUILT here — same forced source:/repositories:
+  # split hardware.drive.yaml's header documents for the same reason.
   - name: drive
     runs_on: robot
     source:
       - robots/base101/src/base101/base101_description
       - robots/base101/src/base101/base101_control
-      - robots/base101/src/base101/base101_control_plugin
+      - robots/base101/src/base101/base101_time
       - robots/base101/src/base101/base101_bringup_hw
+      - robots/base101/src/base101/base101_slam    # unused; see comment above
+      - robots/base101/src/base101/base101_nav     # unused; see comment above
       - robots/mod101/src/mod101_description   # arm links/meshes
       - robots/mod101/src/mod101_control       # arm + trajectory controllers
       - robots/mod101/src/mod101_tool_jaws     # default tool
-    # devices:
-    #   - "/dev/axon-serial:/dev/axon-serial"   # if the bridge is host-side
     entrypoint: >-
       ros2 launch base101_bringup_hw robot.launch.py
       arm:=true camera:=oak_d rosboard:=false
       slam:=false nav:=false agent:=false
 
-  # RPLidar C1 -> /scan, frame lidar_frame. slam and nav both need this.
-  # TODO(verify): the udev symlink name and whether ros-jazzy-sllidar-ros2
-  # exists for jazzy; if not, swap apt_packages for a `repositories:` entry
-  # pointing at github.com/Slamtec/sllidar_ros2.
+  # RPLidar C1 -> /scan_filtered (self-filtered — see base101_lidar/README.md),
+  # frame lidar_frame. slam and nav both need this. Same driver + package as
+  # hardware.drive.yaml's copy of this component — see there for why
+  # rplidar_ros still needs `repositories:` alongside base101_lidar's
+  # `source:`.
   - name: lidar
     runs_on: robot
+    source:
+      - robots/base101/src/base101/base101_lidar
     repositories:
-      - url: https://github.com/Slamtec/sllidar_ros2.git
-        version: main
+      - url: https://github.com/Slamtec/rplidar_ros
+        version: ros2
     devices:
       - "/dev/rplidar:/dev/rplidar"
     entrypoint: >-
-      ros2 launch sllidar_ros2 sllidar_c1_launch.py
+      ros2 launch base101_lidar lidar.launch.py
       serial_port:=/dev/rplidar frame_id:=lidar_frame
 
   # Luxonis OAK-D on the front bracket.
@@ -102,15 +118,23 @@ components:
   #
   # TODO(verify): confirm the driver stamps camera_optical_frame and
   # publishes under /oak — base101_hw.yaml's camera topics assume both.
+  #
+  # v3-jazzy, not humble: the humble branch fails to build on Jazzy
+  # (cv_bridge isn't rosdep-resolvable there) — see hardware.drive.yaml's
+  # copy of this component for the build error and the fix. Jazzy needs both
+  # depthai-core and depthai-ros at v3-jazzy, and the package/launch names
+  # get a _v3 suffix.
   - name: camera
     runs_on: robot
     privileged: true                 # required for the OAK-D USB re-enumeration
     repositories:
+      - url: https://github.com/luxonis/depthai-core.git
+        version: v3-jazzy
       - url: https://github.com/luxonis/depthai-ros.git
-        version: humble             # TODO(verify): jazzy branch if published
+        version: v3-jazzy
     volumes:
       - /dev/bus/usb:/dev/bus/usb
-    entrypoint: ros2 launch depthai_ros_driver camera.launch.py
+    entrypoint: ros2 launch depthai_ros_driver_v3 driver.launch.py
 
   # SLAM half: EKF + slam_toolbox (mapping mode; modes switch via service).
   - name: slam

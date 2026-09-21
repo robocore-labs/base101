@@ -741,7 +741,14 @@
      RPLidar C1. lidar_frame is the scan origin: the rotor axis, at the
      height of the optical window between the base and the spinning cap
      (CAD z = 14.5 mm, i.e. 96.5 mm off the floor). /scan is stamped in
-     it and slam/nav consume it from there. -->
+     it and slam/nav consume it from there.
+
+     lidar_mount_1/lidar_1 are zero-rotation relative to their parents (real
+     CAD placement, taken verbatim from the export) but lidar_frame_joint
+     below carries an extra yaw=pi: confirmed (2026-09-21) that raw /scan's
+     angle=0 is the physical rear of the robot, not lidar_1's own +X the
+     CAD export otherwise assumes — a frame-definition mismatch, not the
+     physical mounting or the driver. See that joint's comment. -->
 
 <link name="lidar_mount_1">
   <inertial>
@@ -799,7 +806,14 @@
 
 <link name="lidar_frame"/>
 <joint name="lidar_frame_joint" type="fixed">
-  <origin xyz="-0.021498 -0.0215 0.030313" rpy="0 0 0"/>
+  <!-- yaw=pi, confirmed (2026-09-21): raw /scan's angle=0 is the physical
+       rear, not lidar_1's own +X as the zero here originally assumed — see
+       the lidar section's header comment above. Only this joint carries the
+       correction (not lidar_mount_joint/lidar_joint above), since those two
+       are real CAD placement for the mount bracket/sensor body meshes and
+       are correct as exported; this one is purely the scan-origin frame TF
+       consumers (SLAM, costmaps) read /scan through. -->
+  <origin xyz="-0.021498 -0.0215 0.030313" rpy="0 0 3.141593"/>
   <parent link="lidar_1"/>
   <child link="lidar_frame"/>
 </joint>

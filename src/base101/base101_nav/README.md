@@ -67,11 +67,11 @@ something publishes the `map` frame, so `nav.launch.py` without
 | File | Purpose |
 |------|---------|
 | `planner.yaml` | SmacPlanner2D global path planning |
-| `controller.yaml` | MPPI controller for trajectory following |
+| `controller.sim.yaml` / `controller.hw.yaml` | MPPI controller for trajectory following — identical except `odom_topic` (`/diff_drive_controller/odom` vs the host-side EKF's `/odom`; see `HARDWARE.md`), picked by `use_sim_time` in `nav.launch.py` |
 | `costmap.yaml` | Unified global/local costmaps (all modes) |
-| `bt_navigator.yaml` | Behavior tree navigator config |
-| `velocity_smoother.yaml` | Velocity command smoothing |
-| `laser_filter.yaml` | Scan filter config (not currently launched) |
+| `bt_navigator.sim.yaml` / `bt_navigator.hw.yaml` | Behavior tree navigator config — same sim/hw split, same reason |
+| `velocity_smoother.sim.yaml` / `velocity_smoother.hw.yaml` | Velocity command smoothing — same sim/hw split, same reason |
+| `laser_filter.yaml` | Sim-only scan self-filter, blanks the rear self-hit wedge (measured, see the file's own comments); launched from `base101_bringup_gazebo/launch/sim.launch.py`, not from here. Hardware's equivalent is `base101_lidar/config/lidar_filters.yaml`, run in that package's own launch instead of `base101_nav`'s. |
 
 ## Robot Parameters
 
