@@ -112,14 +112,19 @@ Manual test procedures for every variant, tool and launch combination are in
 ### On the real robot
 
 Motors, IMU and lidar all hang off the Axon 2 board and talk to ROS 2 over
-zenoh, so bringup is two lines:
+zenoh. `robot.launch.py`'s scope is deliberately narrow — the drive stack
+only (`robot_state_publisher`, `twist_mux`, a host-side EKF fusing the
+firmware's raw odometry, `rosboard`) — so cmd_vel goes straight from
+`twist_mux` to the firmware and SLAM/Nav2 are a second, independent launch:
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_bringup_hw robot.launch.py
+ros2 launch base101_bringup_hw robot.launch.py   # drive stack: wheels, IMU, EKF, rosboard
+ros2 launch base101_autonomy   autonomy.launch.py  # separately: SLAM + Nav2
 ```
 
-Firmware, the zenoh router, serial devices and udev rules:
+Firmware, the zenoh router, serial devices, udev rules, and the full
+topic/node map (what talks to what, and where odometry gets fused):
 [`HARDWARE.md`](HARDWARE.md).
 
 ## Adding the mod101 arm
@@ -241,11 +246,11 @@ the folders are purely organisational. Packages parked out of the build live in
 | `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). |
 | `base101_worlds` | ament_cmake | Sim-common assets: Gazebo worlds, ros↔gz bridge, RViz preset. |
 
-**Stacks** — own their own launch, composed by the bringup packages
+**Stacks** — own their own launch, composed by a bringup package
 
 | Package | Type | Purpose |
 |---|---|---|
-| `base101_slam` | ament_cmake | EKF (robot_localization) + slam_toolbox: `/map` and the `map->odom` TF. |
+| `base101_slam` | ament_cmake | `slam_toolbox`: `/map` and the `map->odom` TF. On hardware, odometry fusion is **not** here — see `base101_control`'s EKF below. |
 | `base101_nav` | ament_cmake | Nav2: planner, controller, bt_navigator, velocity smoother, behavior trees. |
 | `base101_arm_moveit_config` | ament_cmake | `src/base101_arm/` — MoveIt semantics for the composed chassis+arm robot, and `move_group.launch.py`. |
 
@@ -254,7 +259,8 @@ the folders are purely organisational. Packages parked out of the build live in
 | Package | Type | Purpose |
 |---|---|---|
 | `base101_bringup_gazebo` | ament_cmake | `sim.launch.py` — the whole robot in Gazebo: model, controllers, bridges, SLAM, Nav2, optionally arm + MoveIt. |
-| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the same graph on real hardware, same argument names. Also owns `display.launch.py` (RViz only). |
+| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the drive stack only on real hardware: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`. Deliberately **not** the same graph or argument contract as `sim.launch.py` — no `nav:=`/`slam:=`/`agent:=` here. Also owns `display.launch.py` (RViz only). |
+| `base101_autonomy` | ament_cmake | `autonomy.launch.py` — **hardware only.** Composes `base101_slam` + `base101_nav` in one launch/forge component, independent of `base101_bringup_hw`. This is how SLAM/Nav2 come up on the real robot now; sim still gets them from `sim.launch.py`'s `nav:=`/`slam:=` args directly. |
 
 Arm or no arm is the `arm:=` argument, not a package. Before the 2026-08
 restructure it was six packages (`base101_simple_{description,gazebo,control}`
@@ -265,7 +271,7 @@ and `base101_arm_{description,gazebo,control}`) expressing one boolean — see
 
 | Package | Type | Purpose |
 |---|---|---|
-| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by both bringup packages (`agent:=false` to skip); commands `/cmd_vel_agent` at twist_mux priority 50. |
+| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by `base101_bringup_gazebo` (`agent:=false` to skip); on hardware it's a separate, not-yet-wired forge component (see `hardware.yaml`'s `agent`, still blocked on `arm:=true` — `base101_bringup_hw` no longer depends on it at all). Commands `/cmd_vel_agent` at twist_mux priority 50. |
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
 | `base101_teleop` | ament_python | Standalone single-page web teleop (base + every joint) on `:8700`. Fallback for the rosboard Joint sliders card. |
 | `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for tower + arms). |
@@ -275,17 +281,18 @@ graph TD
     subgraph bringup["bringup — what you launch"]
         SIM["base101_bringup_gazebo<br/><i>sim.launch.py</i>"]
         HW["base101_bringup_hw<br/><i>robot.launch.py, display.launch.py</i>"]
+        AUTO["base101_autonomy<br/><i>autonomy.launch.py</i><br/>(hardware only)"]
     end
 
     subgraph stacks["stacks — own launch, composed above"]
-        SLAM["base101_slam<br/><i>EKF + slam_toolbox</i>"]
+        SLAM["base101_slam<br/><i>slam_toolbox</i>"]
         NAV["base101_nav<br/><i>Nav2</i>"]
         MOVEIT["base101_arm_moveit_config<br/><i>move_group</i>"]
     end
 
     subgraph model["model, config, worlds"]
         DESC["base101_description<br/><i>base101.xacro + arm.xacro,<br/>chassis, sensors, meshes</i>"]
-        CTRL["base101_control<br/><i>controllers.{sim,hw}.yaml,<br/>twist_mux, hardware xacro</i>"]
+        CTRL["base101_control<br/><i>controllers.sim.yaml, twist_mux,<br/>hardware xacro, EKF (ekf.hw.yaml)</i>"]
         PLUGIN["base101_control_plugin<br/><i>ros2_control ↔ Axon bridge</i>"]
         GZ["base101_worlds<br/><i>worlds, gz bridge, rviz</i>"]
     end
@@ -294,8 +301,8 @@ graph TD
 
     SIM --> DESC & CTRL & GZ
     HW  --> DESC & CTRL
-    SIM -.->|composes| SLAM & NAV & MOVEIT
-    HW  -.->|composes| SLAM & NAV
+    SIM -.->|composes, nav:=/slam:=| SLAM & NAV & MOVEIT
+    AUTO -.->|composes| SLAM & NAV
 
     DESC -->|arm:=true, inside xacro:if| MOD
     CTRL -->|hardware xacro| PLUGIN
@@ -303,8 +310,11 @@ graph TD
 ```
 
 Solid arrows are build/`xacro:include` dependencies; dashed arrows are runtime
-composition — the bringup packages including a stack's launch file, and the
-`gz_ros2_control` controller-file lookup resolved at Gazebo spawn.
+composition — a bringup package including a stack's launch file, and the
+`gz_ros2_control` controller-file lookup resolved at Gazebo spawn. Note `HW`
+has no dashed arrow to `SLAM`/`NAV` anymore — on hardware that's `AUTO`'s job,
+launched separately and not depended on by `HW` at all; the two only agree by
+convention on `/tf`, `/odom` and `/scan_filtered` already being on the wire.
 
 ## Deeper docs
 

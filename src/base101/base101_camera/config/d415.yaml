@@ -1,0 +1,41 @@
+# realsense2_camera tuning for the Intel RealSense D415 on base101's front
+# bracket (see ../launch/camera.launch.py). Loaded via rs_launch.py's own
+# config_file argument, so this only needs the params that differ from
+# realsense2_camera's defaults — frame/namespace wiring lives in the launch
+# file itself as explicit arguments, not here.
+#
+# The D415 has no onboard IMU (unlike the D435i/D455) — nothing to enable
+# here. The robot's own IMU is the Axon board's (HARDWARE.md's topic
+# contract, fused by the host EKF); this camera contributes vision only.
+#
+# Tuning notes:
+#   - 1280x720 (not 640x480) on both depth and color: the D415's native
+#     stereo resolution, for the best spatial precision the sensor can give
+#     rather than trading it away for bandwidth.
+#   - align_depth.enable: depth published in the color optical frame,
+#     matching what profiles/base101_arm_hw.yaml's `cameras.base` expects
+#     (frame: camera_color_optical_frame, shared by both streams) — see
+#     ../launch/camera.launch.py for why that frame name specifically.
+#   - spatial/temporal/hole-filling filters on: reduces depth noise at the
+#     cost of some fine detail and a frame or two of latency (temporal) —
+#     the standard tradeoff for "clean over sharp", appropriate for
+#     grasp-planning use rather than fast motion tracking.
+#   - clip_distance: 2.0m. This bracket is for close-range arm/gripper work,
+#     not room-scale depth, so far returns past 2m are just noise here.
+#   - TODO(verify against real hardware): the D415's commonly-cited native
+#     minimum depth range is roughly 30-45cm depending on source — closer
+#     to (and possibly past) the ~15-30cm the arm/gripper work actually
+#     wants. Unlike the OAK-D-Lite this doesn't have an IR-projector
+#     workaround to lean on; confirm the achievable minimum on the real unit
+#     with `realsense-viewer` or `ros2 topic echo` before assuming this
+#     covers the full target range.
+/**:
+  ros__parameters:
+    depth_module.depth_profile: '1280x720x30'
+    rgb_camera.color_profile: '1280x720x30'
+    align_depth.enable: true
+    spatial_filter.enable: true
+    temporal_filter.enable: true
+    hole_filling_filter.enable: true
+    decimation_filter.enable: false   # no downsampling — precision over bandwidth
+    clip_distance: 2.0

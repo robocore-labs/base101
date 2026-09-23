@@ -1,0 +1,26 @@
+# Hand-maintained (unlike docker-compose.robot.yaml, which forge generates)
+# — this is the deployment console itself. Mounts the host Docker socket
+# (root-equivalent access) so it can manage sibling containers, plus the
+# directory holding the compose file it should operate on and the config
+# files it should let you hot-edit. No auth — see README.md before running
+# this anywhere reachable beyond the robot's own LAN.
+services:
+  console:
+    build:
+      context: .
+      args:
+        TARGETARCH: ${TARGETARCH:-amd64}
+    image: base101_console:latest
+    ports:
+      - "8090:8090"
+    environment:
+      COMPOSE_FILE: ${CONSOLE_COMPOSE_FILE:-/deploy/docker-compose.robot.yaml}
+      COMPOSE_PROJECT_NAME: ${CONSOLE_COMPOSE_PROJECT:?set to the real stack's existing compose project name}
+      CONFIG_ROOT: ${CONSOLE_CONFIG_ROOT:-/deploy}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Host directory holding the real compose file + staged ros_ws
+      # configs. Defaults to this repo's root for local testing; override
+      # with the robot's actual deploy root (e.g. /home/cdr/robocore-deploy).
+      - ${DEPLOY_ROOT:-..}:/deploy
+    restart: unless-stopped

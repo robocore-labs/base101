@@ -1,0 +1,78 @@
+
+
+ros_distro: jazzy
+ros_domain_id: 0
+registry: dragomirxyz
+image_prefix: base101
+
+
+zenoh:
+  router_image: axon-zenohd:latest
+  router_port: 7447
+  router_command: "-c /etc/zenoh/serial.json5"
+  router_devices:
+    - "/dev/link101-zenoh:/dev/axon-zenoh"
+
+hosts:
+  - name: robot
+    ip: orin.lan
+    user: cdr
+    arch: arm64
+    manager: true
+    mount_root: /home/cdr/robocore-deploy
+
+components:
+  - name: drive
+    runs_on: robot
+    source:
+      - src/base101/base101_description
+      - src/base101/base101_control
+      - src/base101/base101_time
+      - src/base101/base101_bringup_hw
+    ports:
+      - "8888:8888"
+    repositories:
+      - url: https://github.com/cristidragomir97/rosboard-with-extras
+        version: main             # TODO(verify): jazzy branch if published
+    environment:
+      ZENOH_CONFIG_OVERRIDE: >-
+        listen/endpoints=["tcp/0.0.0.0:0"];connect/endpoints=["tcp/zenoh_router:7447"];transport/shared_memory/enabled=false
+    entrypoint: >-
+      ros2 launch base101_bringup_hw robot.launch.py
+      camera:=realsense rosboard:=true
+
+  - name: autonomy
+    runs_on: robot
+    source:
+      - src/base101/base101_autonomy
+      - src/base101/base101_slam
+      - src/base101/base101_nav
+    environment:
+      ZENOH_CONFIG_OVERRIDE: >-
+        listen/endpoints=["tcp/0.0.0.0:0"];connect/endpoints=["tcp/zenoh_router:7447"];transport/shared_memory/enabled=false
+    entrypoint: ros2 launch base101_autonomy autonomy.launch.py
+
+  - name: lidar
+    runs_on: robot
+    source:
+      - src/base101/base101_lidar
+    repositories:
+      - url: https://github.com/Slamtec/rplidar_ros
+        version: ros2
+    devices:
+      - "/dev/ttyCH341USB0:/dev/rplidar"
+    environment:
+      ZENOH_CONFIG_OVERRIDE: >-
+        listen/endpoints=["tcp/0.0.0.0:0"];connect/endpoints=["tcp/zenoh_router:7447"];transport/shared_memory/enabled=false
+    entrypoint: >-
+      ros2 launch base101_lidar lidar.launch.py
+      serial_port:=/dev/rplidar frame_id:=lidar_frame serial_baudrate:=460800
+
+  - name: camera
+    runs_on: robot
+    privileged: true               
+    source:
+      - src/base101/base101_camera
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    entrypoint: ros2 launch base101_camera camera.launch.py

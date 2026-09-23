@@ -65,10 +65,13 @@ source (servo feedback), not this firmware.
 ## Host-side fused odometry
 
 The firmware exposes raw sensors only — no fusion, no TF. A `robot_localization`
-EKF (`ekf_filter_node`, `base101_slam/config/ekf.hw.yaml`) owns that instead,
-launched unconditionally from `base101_bringup_hw/launch/robot.launch.py`
-(not gated behind `slam:=`/`nav:=` — see "Bring up the base" below). It's the
-**one and only** publisher of `/odom` and `odom → base_link` on hardware:
+EKF (`ekf_filter_node`, `base101_control/config/ekf.hw.yaml`) owns that
+instead, launched unconditionally from
+`base101_bringup_hw/launch/robot.launch.py` — that package's whole scope is
+robot_state_publisher + twist_mux + this EKF + rosboard now; SLAM/nav are a
+separate `base101_autonomy` package/forge component (see "Navigation / SLAM"
+below), not something `robot.launch.py` launches or even depends on. It's
+the **one and only** publisher of `/odom` and `odom → base_link` on hardware:
 
 | Input | Fused | Not fused |
 |---|---|---|
@@ -107,12 +110,31 @@ independent between them.
    #  /dev/axon-lidar     RPLidar C1 UART passthrough
    #  /dev/axon-debug     firmware debug log
    ```
-2. **zenoh router** — bridges the board's serial zenoh to the host's
+2. **RealSense udev rule** — the forge component's `privileged: true` +
+   `devices:` mapping only grants the *container* USB access; the raw
+   device node is still `root:root 0660` on the *host* by default, which
+   isn't enough on its own (this bit an earlier OAK-D Lite integration with
+   `X_LINK_DEVICE_NOT_FOUND`, a different camera but the same category of
+   miss). librealsense ships its own rule
+   (`librealsense/config/99-realsense-libusb.rules` upstream, per-product-ID)
+   but that only takes effect installed on the *host* — installing
+   `librealsense2-udev-rules` inside the container image doesn't reach the
+   host's udev daemon. One-time, on whichever host the camera is physically
+   plugged into:
+   ```
+   echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="8086", MODE="0666"' | \
+     sudo tee /etc/udev/rules.d/99-realsense.rules
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+   Unplug and replug the camera afterward. `8086` is Intel's USB vendor ID
+   — verify with `lsusb | grep 8086`. **Not yet applied/verified on the
+   real robot.**
+3. **zenoh router** — bridges the board's serial zenoh to the host's
    `rmw_zenoh` sessions (TCP 7447). Use the firmware's compose file:
    ```
    cd ~/Work/base101-fw/docker && docker compose up -d   # uses zenoh-serial.json5
    ```
-3. **rmw_zenoh** — every ROS 2 shell that should see the board:
+4. **rmw_zenoh** — every ROS 2 shell that should see the board:
    ```
    export RMW_IMPLEMENTATION=rmw_zenoh_cpp
    ```
@@ -130,10 +152,16 @@ ros2 launch base101_bringup_hw robot.launch.py
 This starts `robot_state_publisher` (from `base101.hardware.xacro`,
 `simulator:=none`, no `ros2_control` block), a `twist_mux` (`use_stamped:
 true`) in front of `/link101/cmd_vel` — straight to the firmware, no
-controller_manager in between — and the EKF described above, all
-unconditionally, then SLAM + Nav2. Add `nav:=false slam:=false` for wheels
-only; the EKF (and therefore `/odom` + `odom → base_link`) stays up either
-way, unlike before.
+controller_manager in between — the EKF described above, and `rosboard`,
+all unconditionally. That's the whole scope of this launch: SLAM/nav are a
+separate `base101_autonomy` package, brought up with
+
+```
+ros2 launch base101_autonomy autonomy.launch.py
+```
+
+(its own forge component in `hardware.yaml`/`hardware.drive.yaml`, not
+something `robot.launch.py` has flags for anymore).
 
 Drive it:
 ```
@@ -164,6 +192,13 @@ reflash — the host side stays unchanged.
 - **IMU** needs no driver — the firmware publishes `/link101/imu` directly.
 
 ## Navigation / SLAM
+
+On hardware, `base101_slam` + `base101_nav` are launched together via
+`base101_autonomy/launch/autonomy.launch.py` (its own forge component —
+see "Bring up the base" above) — a separate small package that composes
+the two without either depending on the other, and without pulling in
+`base101_bringup_hw`'s own dependencies. Both packages remain independent
+launch-wise (nav doesn't require slam to be running, or vice versa).
 
 `base101_slam`'s `slam_toolbox` consumes standard `/tf` + `/scan_filtered`
 and publishes only `map → odom` — it never touches `odom → base_link` (the

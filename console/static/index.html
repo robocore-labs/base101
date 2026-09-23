@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>base101 console</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>base101 console</h1>
+  <button id="refresh">Refresh</button>
+</header>
+
+<main>
+  <section id="services">
+    <h2>Services</h2>
+    <div id="service-list">Loading&hellip;</div>
+  </section>
+
+  <section id="logs" hidden>
+    <h2>Logs &mdash; <span id="logs-service"></span> <button id="logs-close">Close</button></h2>
+    <pre id="logs-output"></pre>
+  </section>
+
+  <section id="config">
+    <h2>Config files</h2>
+    <div class="config-layout">
+      <ul id="config-tree"></ul>
+      <div class="editor-pane">
+        <div id="editor-path">Select a file</div>
+        <textarea id="editor" spellcheck="false" disabled></textarea>
+        <div class="editor-actions">
+          <button id="save" disabled>Save</button>
+          <span id="save-status"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

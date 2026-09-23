@@ -350,8 +350,8 @@ The arm is sim-only: `controllers.hw.yaml` has no arm section and
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_bringup_hw robot.launch.py
-ros2 launch base101_bringup_hw robot.launch.py nav:=false   # wheels only
+ros2 launch base101_bringup_hw robot.launch.py   # wheels only — that's this launch's whole scope now
+ros2 launch base101_autonomy autonomy.launch.py  # separately, for SLAM + Nav2
 ```
 
 See [HARDWARE.md](../HARDWARE.md). Note `controllers.hw.yaml` carries its own

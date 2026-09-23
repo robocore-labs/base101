@@ -42,7 +42,8 @@ against base101-fw), so no `use_stamped` override is needed on that launch.
 |---|---|---|
 | Joystick (rosboard teleop card, base101_teleop_web) | `/cmd_vel_joy` | 100 |
 | Keyboard | `/cmd_vel_key` | 90 |
-| Navigation (Nav2) | `/cmd_vel_nav` | 10 |
+| Robocore agent (sim; hardware not wired up yet — see root README) | `/cmd_vel_agent` | 50 |
+| Navigation (Nav2, via `base101_autonomy` on hardware) | `/cmd_vel_nav` | 10 |
 
 Higher priority wins; lower-priority commands are timed out at 0.5s.
 

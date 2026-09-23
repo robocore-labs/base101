@@ -4,12 +4,17 @@
   <name>base101_bringup_hw</name>
   <version>0.1.0</version>
   <description>
-    Hardware bringup for base101: one launch that starts robot_state_publisher
-    + twist_mux + rosboard on the real robot, plus the autonomy stack. The
-    Axon 2 firmware owns the whole control loop itself (locomotion, odometry)
-    over zenoh — there is no ros2_control on the host side. Also owns the
-    RViz-only display launch. The counterpart of base101_bringup_gazebo,
-    sharing its argument contract so sim and robot are driven the same way.
+    Hardware bringup for base101: one launch that starts
+    robot_state_publisher + twist_mux + a host-side EKF + rosboard on the
+    real robot — the drive stack only. The Axon 2 firmware owns the whole
+    control loop itself (locomotion, odometry) over zenoh — there is no
+    ros2_control on the host side. Also owns the RViz-only display launch.
+    Deliberately does NOT depend on base101_slam/base101_nav/robocore_agent
+    — those are separate forge components (base101_autonomy for slam+nav,
+    its own agent component), not launched from here. Not the sim
+    counterpart's argument contract: base101_bringup_gazebo/launch/
+    sim.launch.py still launches everything including slam/nav/agent from
+    one file, so its args are a superset of this one's.
   </description>
 
   <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
@@ -21,11 +26,6 @@
   <exec_depend>base101_description</exec_depend>
   <exec_depend>base101_control</exec_depend>
   <exec_depend>base101_time</exec_depend>
-
-  <!-- Stacks this composes -->
-  <exec_depend>base101_slam</exec_depend>
-  <exec_depend>base101_nav</exec_depend>
-  <exec_depend>robocore_agent</exec_depend>
 
   <!-- Control runtime -->
   <exec_depend>robot_state_publisher</exec_depend>

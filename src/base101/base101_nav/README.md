@@ -13,12 +13,14 @@ before they exist.
 
 ## Quick Start
 
-Normally you don't launch this yourself — the bringup packages compose it,
-and it comes up with the sim by default:
+Normally you don't launch this yourself — a bringup-tier package composes
+it. In sim it comes up by default; on hardware it's a separate launch from
+the drive stack:
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py       # sim + slam + nav2
-ros2 launch base101_bringup_hw     robot.launch.py     # robot + slam + nav2
+ros2 launch base101_bringup_gazebo sim.launch.py       # sim + slam + nav2 (nav:=false to skip)
+ros2 launch base101_bringup_hw     robot.launch.py     # robot body only — wheels, IMU, EKF, rosboard
+ros2 launch base101_autonomy       autonomy.launch.py  # hardware slam + nav2, launched separately
 ```
 
 Launching the halves by hand is still supported, and is the point of keeping

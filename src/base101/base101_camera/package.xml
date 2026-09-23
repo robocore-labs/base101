@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_camera</name>
+  <version>0.1.0</version>
+  <description>
+    Intel RealSense D415 driver for base101. Wraps realsense2_camera with
+    base101-specific tuning for close-range arm/gripper work — see
+    config/d415.yaml for why. Replaces an earlier OAK-D Lite integration,
+    dropped after it turned out to sit on an unreliable USB2 hub on the
+    real robot.
+  </description>
+
+  <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>realsense2_camera</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,13 +1,18 @@
 # EKF config for real hardware — host-side fused odometry.
 #
+# Lives in base101_control, not base101_slam (compare ekf.sim.yaml, sim's
+# equivalent, which does live there): this EKF is launched unconditionally
+# from base101_bringup_hw/launch/robot.launch.py, not gated behind
+# slam:=/nav:= and unrelated to slam_toolbox — base101_bringup_hw already
+# depends on base101_control for the URDF/twist_mux config, so this doesn't
+# add a new package dependency the way base101_slam would have.
+#
 # The Axon 2 firmware stopped publishing fused odometry/TF: it now only
 # exposes raw wheel-encoder odometry (/link101/odom/raw) and raw IMU
 # (/link101/imu, no orientation). This EKF is what turns those into
 # odom -> base_link and /odom — it's the ONLY node on hardware that
-# publishes either, launched unconditionally from
-# base101_bringup_hw/launch/robot.launch.py (not gated behind slam:=/nav:=,
-# unlike sim's ekf.sim.yaml — there is no other odom -> base_link source on
-# hardware to fall back on). See HARDWARE.md's topic contract.
+# publishes either (there is no other odom -> base_link source on hardware
+# to fall back on). See HARDWARE.md's topic contract.
 #
 # Fuses velocities only, not position/orientation: the firmware's
 # /link101/odom/raw already integrates wheel pose itself, and re-integrating

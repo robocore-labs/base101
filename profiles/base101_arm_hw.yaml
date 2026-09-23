@@ -50,17 +50,27 @@ mobility:
   max_linear: 0.5                   # m/s, measured: DDSM210 rated-speed reality
   max_angular: 1.5                  # rad/s safety clamp
 
-# Luxonis OAK-D on the front bracket (camera:=oak_d).
+# Intel RealSense D415 on the front bracket (camera:=realsense), driven by
+# base101_camera (see src/base101/base101_camera/README.md). Was OAK-D Lite
+# until it turned out to be sitting on an unreliable USB2 hub on the real
+# robot — see that package's README/git history if reconsidering cameras
+# again.
 #
-# camera_optical_frame is deliberately shared with the RealSense variant and
-# with the sim — chassis.xacro:805-815 keeps the frame graph identical
-# whichever module is fitted, and both realsense2_camera and depthai stamp
-# that name. So `frame`/`optical` below are correct as written.
+# camera_optical_frame is what the sim stamps (chassis.xacro:805-815 keeps
+# the frame graph identical whichever module is fitted) — but
+# realsense2_camera stamps a more specific per-stream name. Traced through
+# base_realsense_node.h's OPTICAL_FRAME_ID macro (tf_prefix + camera_name +
+# "_" + stream + "_optical_frame"): with base101_camera's camera.launch.py
+# setting camera_name="camera" and tf_prefix left at its default (empty),
+# that's camera_color_optical_frame — shared by depth too since it's
+# aligned to color (align_depth.enable in d415.yaml). `frame` below
+# reflects that real name, not the sim's bare one.
 #
-# TODO(verify against a live driver): the topic names assume
-# depthai_ros_driver's default `/oak` namespace. Confirm with
-# `ros2 topic list` once the camera component is up, and remap the driver if
-# it does not stamp camera_optical_frame.
+# TODO(verify against a live driver): traced through source, not yet
+# confirmed against a running camera. Confirm with `ros2 topic echo
+# /camera/color/camera_info --field header` once the camera component is
+# up, and update both this file and d415.yaml together if the stamped
+# frame doesn't match.
 groups:
   arm:
     kind: arm
@@ -118,10 +128,10 @@ groups:
 
 cameras:
   base:
-    rgb: /oak/rgb/image_raw
-    depth: /oak/stereo/image_raw
-    info: /oak/rgb/camera_info
-    frame: camera_optical_frame
+    rgb: /camera/color/image_raw
+    depth: /camera/aligned_depth_to_color/image_raw
+    info: /camera/color/camera_info
+    frame: camera_color_optical_frame
     optical: true                   # REQUIRED — without it deproject/get_cloud
                                     # come out 90 degrees wrong with no error
 
