@@ -44,7 +44,12 @@ mobility:
   locomotion: differential          # 4WD skid steer presents as diff drive
   cmd_vel: /cmd_vel_agent           # twist_mux input, priority 50
   cmd_vel_stamped: true             # Jazzy twist_mux (use_stamped) wants TwistStamped
-  odom_topic: /diff_drive_controller/odom
+  # The one and only publisher of odom -> base_link / /odom on hardware is
+  # the host EKF (base101_control/config/ekf.hw.yaml); there is no
+  # diff_drive_controller here, unlike sim. (Fixed 2026-09-23 — this used
+  # to read /diff_drive_controller/odom, a stale copy from the sim profile
+  # that predates the Axon 2 rewrite; see base101_hw.yaml.)
+  odom_topic: /odom
   nav2_navigate_to_pose: /navigate_to_pose
   # No nav2_follow_waypoints: base101_nav launches no waypoint_follower.
   max_linear: 0.5                   # m/s, measured: DDSM210 rated-speed reality
@@ -136,11 +141,17 @@ cameras:
                                     # come out 90 degrees wrong with no error
 
 lidar:
-  scan: /scan                       # RPLidar C1, frame lidar_frame
+  # base101_lidar republishes the self-filtered scan on /scan_filtered;
+  # base101_slam/base101_nav are wired to that name, not the raw /scan.
+  # (Fixed 2026-09-23 — see base101_hw.yaml.)
+  scan: /scan_filtered              # RPLidar C1, self-hits stripped, frame lidar_frame
 
 imu:
-  topic: /imu/data                  # BNO055 on the Axon 2 board, frame imu_link,
-                                    # 50 Hz. Also /imu/mag and /imu/temperature.
+  # Fixed 2026-09-23: this used to read /imu/data ("BNO055"), stale from
+  # before the Axon 2 rewrite. The firmware publishes /link101/imu — see
+  # HARDWARE.md's topic contract; all firmware topics live under /link101/.
+  topic: /link101/imu               # Axon 2 firmware, frame imu_link,
+                                    # 50 Hz. Also /link101/imu/mag and /link101/imu/temperature.
 
 slam:
   backend: slam_toolbox
@@ -157,10 +168,9 @@ watches: {}                         # dotted-path condition monitors
 places: {}                          # named poses, stored per-map
 
 
-# No `status.battery`: the Axon 2 topic contract (HARDWARE.md) is
-# /motor_manager/* plus /imu/*. There is no BMS topic yet. Declaring one
-# would advertise a battery capability that never produces a reading —
-# add it here when the BMS lands.
+# No `status.battery`: the Axon 2 topic contract (HARDWARE.md) has no BMS
+# topic yet. Declaring one would advertise a battery capability that never
+# produces a reading — add it here when the BMS lands.
 
 safety:
   stop_on_disconnect: true

@@ -3,7 +3,8 @@
 #
 # Matches `ros2 launch base101_bringup_gazebo sim.launch.py` and
 # `base101_bringup_hw robot.launch.py` with their defaults (arm:=false).
-# For the arm configuration use base101_arm.yaml.
+# For the arm configuration use base101_arm.yaml. This file is sim-only —
+# for real hardware (different odom/lidar/imu topics) use base101_hw.yaml.
 #
 # Values marked "measured" come from the base101 workspace / worklogs;
 # everything else is the workspace's own config. Every topic and frame below

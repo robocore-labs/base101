@@ -1,10 +1,8 @@
 #include "base101_control_plugin/ros2_control_bridge.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
-#include <algorithm>
+#include <cmath>
 #include <limits>
-#include <chrono>
-#include <thread>
 
 using hardware_interface::CallbackReturn;
 using hardware_interface::return_type;
@@ -18,43 +16,33 @@ CallbackReturn ROS2ControlBridge::on_init(const hardware_interface::HardwareInfo
   if (hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS)
     return CallbackReturn::ERROR;
 
-  // Params from ros2_control yaml
-  auto it = info_.hardware_parameters.find("base_cmd_topic");
-  if (it != info_.hardware_parameters.end()) base_cmd_topic_ = it->second;
-  it = info_.hardware_parameters.find("arm_cmd_topic");
-  if (it != info_.hardware_parameters.end()) arm_cmd_topic_ = it->second;
-  it = info_.hardware_parameters.find("camera_cmd_topic");
-  if (it != info_.hardware_parameters.end()) camera_cmd_topic_ = it->second;
-  it = info_.hardware_parameters.find("state_topic");
+  auto it = info_.hardware_parameters.find("state_topic");
   if (it != info_.hardware_parameters.end()) state_topic_ = it->second;
-  it = info_.hardware_parameters.find("publish_if_unchanged");
-  if (it != info_.hardware_parameters.end()) publish_if_unchanged_ = (it->second == "true" || it->second == "1");
+  it = info_.hardware_parameters.find("cmd_topic_prefix");
+  if (it != info_.hardware_parameters.end()) cmd_topic_prefix_ = it->second;
 
-  // Split joints into base (velocity cmd), arm (position cmd), and camera (position cmd)
   for (const auto & j : info_.joints) {
-    bool has_vel_cmd = false, has_pos_cmd = false;
+    bool has_pos_cmd = false;
     for (const auto & ci : j.command_interfaces) {
-      if (ci.name == HW_IF_VELOCITY) has_vel_cmd = true;
       if (ci.name == HW_IF_POSITION) has_pos_cmd = true;
     }
-    if (has_vel_cmd) {
-      base_joints_.push_back(j.name);
-      cmd_vel_[j.name] = 0.0;
-      pos_state_[j.name] = 0.0;
-      vel_state_[j.name] = 0.0;
+    if (!has_pos_cmd) continue;
+
+    auto id_it = j.parameters.find("servo_id");
+    if (id_it == j.parameters.end()) {
+      RCLCPP_FATAL(rclcpp::get_logger("base101_control_plugin"),
+        "joint '%s' has a position command interface but no <param name=\"servo_id\">"
+        " — this plugin addresses the Feetech bus by ID, not by array position.",
+        j.name.c_str());
+      return CallbackReturn::ERROR;
     }
-    if (has_pos_cmd) {
-      // Classify position joints as arm or camera based on joint name
-      if (j.name.find("camera") != std::string::npos) {
-        camera_joints_.push_back(j.name);
-      } else {
-        arm_joints_.push_back(j.name);
-      }
-      cmd_pos_[j.name] = std::numeric_limits<double>::quiet_NaN();  // Use NaN to indicate no command received
-      cmd_pos_received_[j.name] = false;  // Track that no command has been received yet
-      pos_state_[j.name] = 0.0;
-      vel_state_[j.name] = 0.0;  // velocity state for trajectory controller feedback
-    }
+
+    joints_.push_back(j.name);
+    servo_id_[j.name] = std::stoi(id_it->second);
+    cmd_pos_[j.name] = std::numeric_limits<double>::quiet_NaN();
+    pos_state_[j.name] = 0.0;
+    vel_state_[j.name] = 0.0;
+    have_state_[j.name] = false;
   }
 
   return CallbackReturn::SUCCESS;
@@ -63,19 +51,9 @@ CallbackReturn ROS2ControlBridge::on_init(const hardware_interface::HardwareInfo
 std::vector<hardware_interface::StateInterface> ROS2ControlBridge::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
-  // Base joints: position & velocity
-  for (const auto & name : base_joints_) {
+  for (const auto & name : joints_) {
     state_interfaces.emplace_back(name, HW_IF_POSITION, &pos_state_[name]);
     state_interfaces.emplace_back(name, HW_IF_VELOCITY, &vel_state_[name]);
-  }
-  // Arm joints: position & velocity
-  for (const auto & name : arm_joints_) {
-    state_interfaces.emplace_back(name, HW_IF_POSITION, &pos_state_[name]);
-    state_interfaces.emplace_back(name, HW_IF_VELOCITY, &vel_state_[name]);
-  }
-  // Camera joints: position
-  for (const auto & name : camera_joints_) {
-    state_interfaces.emplace_back(name, HW_IF_POSITION, &pos_state_[name]);
   }
   return state_interfaces;
 }
@@ -83,13 +61,7 @@ std::vector<hardware_interface::StateInterface> ROS2ControlBridge::export_state_
 std::vector<hardware_interface::CommandInterface> ROS2ControlBridge::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> command_interfaces;
-  for (const auto & name : base_joints_) {
-    command_interfaces.emplace_back(name, HW_IF_VELOCITY, &cmd_vel_[name]);
-  }
-  for (const auto & name : arm_joints_) {
-    command_interfaces.emplace_back(name, HW_IF_POSITION, &cmd_pos_[name]);
-  }
-  for (const auto & name : camera_joints_) {
+  for (const auto & name : joints_) {
     command_interfaces.emplace_back(name, HW_IF_POSITION, &cmd_pos_[name]);
   }
   return command_interfaces;
@@ -97,45 +69,42 @@ std::vector<hardware_interface::CommandInterface> ROS2ControlBridge::export_comm
 
 CallbackReturn ROS2ControlBridge::on_configure(const rclcpp_lifecycle::State &)
 {
-  // Create our internal node and pubs/subs
-  node_ = std::make_shared<rclcpp::Node>("ROSControlMotorBridge");
+  node_ = std::make_shared<rclcpp::Node>("base101_control_plugin_bridge");
 
-  // Publishers (best-effort for micro-ROS compatibility)
-  base_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>(
-    base_cmd_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-  arm_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>(
-    arm_cmd_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
-  camera_pub_ = node_->create_publisher<std_msgs::msg::Float64MultiArray>(
-    camera_cmd_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).best_effort());
+  auto pub_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
+  for (const auto & name : joints_) {
+    const std::string topic =
+      cmd_topic_prefix_ + "/servo_" + std::to_string(servo_id_[name]) + "/command";
+    cmd_pub_[name] = node_->create_publisher<std_msgs::msg::Float64>(topic, pub_qos);
+  }
 
-  // Subscriber (best-effort for micro-ROS compatibility)
-  auto qos = rclcpp::QoS(rclcpp::KeepLast(5)).best_effort();
+  auto sub_qos = rclcpp::QoS(rclcpp::KeepLast(5)).best_effort();
   state_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>(
-    state_topic_, qos,
+    state_topic_, sub_qos,
     std::bind(&ROS2ControlBridge::state_callback, this, std::placeholders::_1));
 
   exec_.add_node(node_);
 
-  RCLCPP_INFO(node_->get_logger(), "Configured MotorBridge. base_cmd_topic=%s arm_cmd_topic=%s camera_cmd_topic=%s state_topic=%s",
-              base_cmd_topic_.c_str(), arm_cmd_topic_.c_str(), camera_cmd_topic_.c_str(), state_topic_.c_str());
+  RCLCPP_INFO(node_->get_logger(),
+    "Configured base101_control_plugin bridge: %zu joint(s), cmd_topic_prefix=%s state_topic=%s",
+    joints_.size(), cmd_topic_prefix_.c_str(), state_topic_.c_str());
 
   return CallbackReturn::SUCCESS;
 }
 
 CallbackReturn ROS2ControlBridge::on_activate(const rclcpp_lifecycle::State &)
 {
-  RCLCPP_INFO(node_->get_logger(), "ROS2 Control Bridge activated - will wait for meaningful joint states before accepting commands");
+  RCLCPP_INFO(node_->get_logger(),
+    "Bridge activated — holding at current position until every joint has "
+    "reported at least one real state from %s", state_topic_.c_str());
   return CallbackReturn::SUCCESS;
 }
 
 CallbackReturn ROS2ControlBridge::on_deactivate(const rclcpp_lifecycle::State &)
 {
-  // Shutdown node to stop callbacks
   exec_.remove_node(node_);
   state_sub_.reset();
-  base_pub_.reset();
-  arm_pub_.reset();
-  camera_pub_.reset();
+  cmd_pub_.clear();
   node_.reset();
   return CallbackReturn::SUCCESS;
 }
@@ -144,121 +113,55 @@ void ROS2ControlBridge::state_callback(const sensor_msgs::msg::JointState::Share
 {
   std::scoped_lock<std::mutex> lk(state_mtx_);
 
-  const size_t n = msg->name.size();
-  bool has_meaningful_position = false;
-
-  for (size_t i = 0; i < n; ++i) {
+  for (size_t i = 0; i < msg->name.size(); ++i) {
     const auto & name = msg->name[i];
+    if (!pos_state_.count(name)) continue;  // not one of ours (or firmware hasn't
+                                             // been configured with this joint's
+                                             // name in its servo ID table yet)
 
-    if (pos_state_.count(name)) {
-      if (i < msg->position.size()) {
-        pos_state_[name] = msg->position[i];
-        // Check if this is a meaningful (non-zero) position for arm/camera joints
-        if ((std::find(arm_joints_.begin(), arm_joints_.end(), name) != arm_joints_.end() ||
-             std::find(camera_joints_.begin(), camera_joints_.end(), name) != camera_joints_.end()) &&
-            std::abs(msg->position[i]) > 0.005) {  // More than 0.005 radians (~0.3 degrees)
-          has_meaningful_position = true;
-        }
-      }
-    }
-    if (vel_state_.count(name)) {
-      if (i < msg->velocity.size()) vel_state_[name] = msg->velocity[i];
-    }
-  }
-
-  // Mark that we've received meaningful joint states
-  if (has_meaningful_position && !received_meaningful_joint_states_) {
-    received_meaningful_joint_states_ = true;
-    RCLCPP_INFO(node_->get_logger(), "Received meaningful joint states - ready to accept controller commands");
+    if (i < msg->position.size()) pos_state_[name] = msg->position[i];
+    if (i < msg->velocity.size()) vel_state_[name] = msg->velocity[i];
+    have_state_[name] = true;
   }
 }
 
 return_type ROS2ControlBridge::read(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // Service any pending JointState messages without blocking controller timings
   exec_.spin_some();
   return return_type::OK;
 }
 
 return_type ROS2ControlBridge::write(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // Check if we've received meaningful joint states yet
-  if (!received_meaningful_joint_states_) {
-    // Until we get meaningful joint states, override any controller commands with current positions
-    {
-      std::scoped_lock<std::mutex> lk(state_mtx_);
-      for (const auto & j : arm_joints_) {
-        if (pos_state_.count(j)) {
-          cmd_pos_[j] = pos_state_[j];  // Keep current position
+  {
+    std::scoped_lock<std::mutex> lk(state_mtx_);
+
+    if (!received_all_joint_states_) {
+      bool all = true;
+      for (const auto & j : joints_) {
+        if (!have_state_[j]) { all = false; break; }
+      }
+      if (all) {
+        received_all_joint_states_ = true;
+        RCLCPP_INFO(node_->get_logger(),
+          "All joints reported state at least once — accepting controller commands");
+      } else {
+        // Hold whichever joints HAVE reported at their current position, so a
+        // controller command written before the bridge is fully up can't
+        // snap a joint to a stale/default 0.0 the instant the rest catch up.
+        for (const auto & j : joints_) {
+          if (have_state_[j]) cmd_pos_[j] = pos_state_[j];
         }
       }
-      for (const auto & j : camera_joints_) {
-        if (pos_state_.count(j)) {
-          cmd_pos_[j] = pos_state_[j];  // Keep current position
-        }
-      }
-    }
-
-    RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
-                         "Waiting for meaningful joint states - holding current positions");
-  } else {
-    // After receiving meaningful joint states, process commands normally
-    for (const auto & j : arm_joints_) {
-      if (!cmd_pos_received_[j]) {
-        cmd_pos_received_[j] = true;
-      }
-    }
-    for (const auto & j : camera_joints_) {
-      if (!cmd_pos_received_[j]) {
-        cmd_pos_received_[j] = true;
-      }
     }
   }
 
-  // Publish base velocities in the order of base_joints_ (always publish - locomotion not affected by joint state waiting)
-  {
-    std_msgs::msg::Float64MultiArray msg;
-    msg.data.reserve(base_joints_.size());
-    for (const auto & j : base_joints_) {
-      msg.data.push_back(cmd_vel_[j]);
-    }
-    base_pub_->publish(msg);
-  }
-
-  // Publish arm positions in the order of arm_joints_ - only if valid commands received
-  {
-    std_msgs::msg::Float64MultiArray msg;
-    msg.data.reserve(arm_joints_.size());
-    bool has_valid_cmd = false;
-    for (const auto & j : arm_joints_) {
-      if (cmd_pos_received_[j] && !std::isnan(cmd_pos_[j])) {
-        msg.data.push_back(cmd_pos_[j]);
-        has_valid_cmd = true;
-      } else {
-        msg.data.push_back(0.0);  // Placeholder, but message won't be published without valid commands
-      }
-    }
-    if (has_valid_cmd) {
-      arm_pub_->publish(msg);
-    }
-  }
-
-  // Publish camera positions in the order of camera_joints_ - only if valid commands received
-  {
-    std_msgs::msg::Float64MultiArray msg;
-    msg.data.reserve(camera_joints_.size());
-    bool has_valid_cmd = false;
-    for (const auto & j : camera_joints_) {
-      if (cmd_pos_received_[j] && !std::isnan(cmd_pos_[j])) {
-        msg.data.push_back(cmd_pos_[j]);
-        has_valid_cmd = true;
-      } else {
-        msg.data.push_back(0.0);  // Placeholder, but message won't be published without valid commands
-      }
-    }
-    if (has_valid_cmd) {
-      camera_pub_->publish(msg);
-    }
+  for (const auto & j : joints_) {
+    const double value = cmd_pos_[j];
+    if (std::isnan(value)) continue;  // no command written to this interface yet
+    std_msgs::msg::Float64 out;
+    out.data = value;
+    cmd_pub_[j]->publish(out);
   }
 
   return return_type::OK;

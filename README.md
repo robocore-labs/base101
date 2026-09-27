@@ -243,7 +243,7 @@ the folders are purely organisational. Packages parked out of the build live in
 |---|---|---|
 | `base101_description` | ament_python | **The robot**: `base101.xacro` (one description, `arm:=` picks the configuration), chassis links/joints, sensors, materials, meshes. *Not launched directly.* |
 | `base101_control` | ament_cmake | Tuning: `controllers.{sim,hw}.yaml`, `twist_mux.yaml`, and the hardware overlay `base101.hardware.xacro`. |
-| `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). |
+| `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging the arm's command/state interfaces to the Axon firmware's (`link101-fw`) per-servo topics (zenoh). Arm-only — locomotion talks to the firmware directly, no `ros2_control` involved. |
 | `base101_worlds` | ament_cmake | Sim-common assets: Gazebo worlds, ros↔gz bridge, RViz preset. |
 
 **Stacks** — own their own launch, composed by a bringup package
@@ -259,7 +259,7 @@ the folders are purely organisational. Packages parked out of the build live in
 | Package | Type | Purpose |
 |---|---|---|
 | `base101_bringup_gazebo` | ament_cmake | `sim.launch.py` — the whole robot in Gazebo: model, controllers, bridges, SLAM, Nav2, optionally arm + MoveIt. |
-| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the drive stack only on real hardware: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`. Deliberately **not** the same graph or argument contract as `sim.launch.py` — no `nav:=`/`slam:=`/`agent:=` here. Also owns `display.launch.py` (RViz only). |
+| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the drive stack on real hardware: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`, and (`arm:=true`) the arm's `controller_manager`. Deliberately **not** the same graph or argument contract as `sim.launch.py` — no `nav:=`/`slam:=`/`agent:=` here. Also owns `display.launch.py` (RViz only). |
 | `base101_autonomy` | ament_cmake | `autonomy.launch.py` — **hardware only.** Composes `base101_slam` + `base101_nav` in one launch/forge component, independent of `base101_bringup_hw`. This is how SLAM/Nav2 come up on the real robot now; sim still gets them from `sim.launch.py`'s `nav:=`/`slam:=` args directly. |
 
 Arm or no arm is the `arm:=` argument, not a package. Before the 2026-08

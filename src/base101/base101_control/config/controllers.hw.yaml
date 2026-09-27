@@ -1,0 +1,83 @@
+# Arm controllers for base101 on REAL HARDWARE (arm:=true only).
+#
+# There is no controller_manager for the wheels on hardware (locomotion talks
+# to the Axon 2 firmware directly — see base101.hardware.xacro), so unlike
+# controllers.sim.yaml this file has no diff_drive_controller and is only
+# loaded at all when arm:=true (see base101_bringup_hw/launch/robot.launch.py).
+#
+# Otherwise the same shape as controllers.sim.yaml's arm section — same
+# controller types, same joint names (arm.xacro's mod101_arm prefix="arm_"
+# applies identically in sim and on hardware) — with use_sim_time:false, and
+# update_rate lower than sim's 100 Hz for the same reason mod101_hw_bringup's
+# controllers.yaml halves its own (50->... see there): the bottleneck is the
+# Feetech bus, not the CPU, and these servos close their own position loop
+# internally, so a faster host-side rate buys nothing real.
+controller_manager:
+  ros__parameters:
+    update_rate: 50  # Hz — must be int (Jazzy crashes on float)
+    use_sim_time: false
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # Spawned at boot. Float64MultiArray on /<controller>/commands.
+    arm_controller:
+      type: position_controllers/JointGroupPositionController
+    gripper_controller:
+      type: position_controllers/JointGroupPositionController
+
+    # Declared, not spawned — the agent (or MoveIt) loads these on entering a
+    # TRAJECTORY session and unloads them on exit (Phase 6 decision 9). Each
+    # pair claims the same joints as its position twin, so only one of each
+    # may be active at a time.
+    arm_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    gripper_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+arm_controller:
+  ros__parameters:
+    joints: [arm_joint_base, arm_joint_shoulder, arm_joint_elbow,
+             arm_joint_wrist_tilt, arm_joint_wrist_roll]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+    # The bridge publishes commands onward and reads state back from the
+    # servos; there is no loop to close here, and closing one would fight
+    # the servo's own position loop (same reasoning as mod101_hw_bringup's
+    # controllers.yaml).
+    open_loop_control: true
+
+gripper_controller:
+  ros__parameters:
+    joints: [arm_6]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+    open_loop_control: true
+
+arm_trajectory_controller:
+  ros__parameters:
+    joints: [arm_joint_base, arm_joint_shoulder, arm_joint_elbow,
+             arm_joint_wrist_tilt, arm_joint_wrist_roll]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    open_loop_control: true
+    allow_partial_joints_goal: false
+    allow_integration_in_goal_trajectories: true
+
+gripper_trajectory_controller:
+  ros__parameters:
+    joints: [arm_6]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    allow_partial_joints_goal: false
+    allow_integration_in_goal_trajectories: true

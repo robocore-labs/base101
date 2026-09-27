@@ -5,7 +5,7 @@
 #include <rclcpp_lifecycle/state.hpp>
 #include <rclcpp/executors/single_threaded_executor.hpp>
 
-#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 
 #include <string>
@@ -15,6 +15,15 @@
 
 namespace base101_control_plugin {
 
+// Bridges ros2_control command/state interfaces to the Axon 2 firmware's
+// per-servo topics (link101-fw, see HARDWARE.md): one std_msgs/Float64
+// publisher per joint on <cmd_topic_prefix>/servo_<servo_id>/command, and a
+// single sensor_msgs/JointState subscription (state_topic) matched BY NAME —
+// not by array position, so a servo dropping off the bus or the firmware's
+// discovery order changing can't silently reassign one joint's state to
+// another's. This only covers the arm (position joints); locomotion talks to
+// the firmware directly (no ros2_control on hardware for the wheels — see
+// attic/README.md for why this plugin was parked and resurrected arm-only).
 class ROS2ControlBridge : public hardware_interface::SystemInterface
 {
 public:
@@ -35,41 +44,34 @@ public:
   hardware_interface::return_type write(const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
-  // Parameters
-  std::string base_cmd_topic_{"/motor_manager/base_cmd"};
-  std::string arm_cmd_topic_{"/motor_manager/arm_cmd"};
-  std::string camera_cmd_topic_{"/motor_manager/camera_cmd"};
-  std::string state_topic_{"/motor_manager/joint_states"};
-  bool publish_if_unchanged_{true};
+  // Parameters (from the <hardware><param> block in the xacro)
+  std::string state_topic_{"/link101/joint_states"};
+  std::string cmd_topic_prefix_{"/link101/servos"};
 
-  // Joint sets derived from interfaces:
-  std::vector<std::string> base_joints_;   // velocity command
-  std::vector<std::string> arm_joints_;    // position command
-  std::vector<std::string> camera_joints_; // position command
+  // One entry per joint this component owns.
+  std::vector<std::string> joints_;
+  std::unordered_map<std::string, int> servo_id_;   // joint name -> servo_id param
 
   // Buffers
-  std::unordered_map<std::string, double> cmd_vel_;   // for base joints (rad/s)
-  std::unordered_map<std::string, double> cmd_pos_;   // for arm+camera joints (rad)
+  std::unordered_map<std::string, double> cmd_pos_;             // rad
+  std::unordered_map<std::string, bool> cmd_pos_received_;      // first real command seen
+  std::unordered_map<std::string, double> pos_state_;           // rad
+  std::unordered_map<std::string, double> vel_state_;           // rad/s
 
-  std::unordered_map<std::string, double> pos_state_; // all joints (rad)
-  std::unordered_map<std::string, double> vel_state_; // base joints (rad/s), arm optional
-
-  // Track whether valid commands have been received to prevent initial 0.0 commands
-  std::unordered_map<std::string, bool> cmd_pos_received_;  // for arm+camera joints
-
-  // Track if we've received meaningful (non-zero) joint states
-  bool received_meaningful_joint_states_{false};
+  // Holds commands at the current position until the firmware has reported a
+  // real (non-startup-default) state for every joint — same reasoning as the
+  // old wheel/camera bridge this was resurrected from: publishing a stale
+  // default (usually 0.0) as the first command would snap the arm there.
+  bool received_all_joint_states_{false};
 
   // ROS
   std::shared_ptr<rclcpp::Node> node_;
-  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr base_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr arm_pub_;
-  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr camera_pub_;
+  std::unordered_map<std::string, rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr> cmd_pub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr state_sub_;
   rclcpp::executors::SingleThreadedExecutor exec_;
   std::mutex state_mtx_;
+  std::unordered_map<std::string, bool> have_state_;   // joint -> seen at least once
 
-  // Helpers
   void state_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
 };
 

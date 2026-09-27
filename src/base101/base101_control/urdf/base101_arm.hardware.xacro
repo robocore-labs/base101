@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<!--
+  Real-hardware <ros2_control> block for the arm's 5 DOF (base, shoulder,
+  elbow, wrist_tilt, wrist_roll). Included from base101.hardware.xacro only
+  when arm:=true.
+
+  The tool joint (arm_6) does NOT get declared here — it gets its own
+  <ros2_control> block from mod101_tool_<tool>/urdf/tool.ros2control, same
+  split sim uses (see arm.xacro's header and mod101_control/urdf/
+  mod101.hardware.xacro's comment for why: declaring it in both places would
+  give controller_manager two hardware components claiming the same joint).
+
+  `hardware`, `hardware_plugin`, `motor_state_topic`, `motor_cmd_prefix` are
+  mod101_macro.xacro's document-global xacro args (declared there, in scope
+  here because base101.hardware.xacro includes base101.xacro -> arm.xacro ->
+  mod101_macro.xacro before this file). mod101_tool_jaws/urdf/tool.ros2control
+  reads the same four for arm_6, so the arm and the tool always agree on
+  which bridge/topics to use.
+
+  base101 overrides the plugin/topic defaults (mod101's own
+  ros2_control_bridge/TopicBridge on /motor_manager/*, for its separate USB
+  Feetech bus) to base101_control_plugin/ROS2ControlBridge on
+  /link101/joint_states + /link101/servos — the arm's servos share the same
+  Axon 2 board/firmware as the wheels here, not a second bus. See
+  base101_bringup_hw/launch/robot.launch.py for where those overrides get
+  passed on the xacro command line, and HARDWARE.md for the topic contract.
+
+  Per-joint `servo_id` is the Feetech bus ID link101-fw's servo table must
+  map to that joint's exact name (arm_joint_base ... arm_joint_wrist_roll)
+  for state to come back on /link101/joint_states — base101_control_plugin
+  matches state by name, not array position, but commands are addressed by
+  ID directly (/link101/servos/servo_<id>/command), so the ID assignment
+  below and the firmware's table have to agree. Follows mod101's own
+  Feetech ID convention (mod101_hw_bringup/README.md "Motor IDs": 1-5 arm,
+  6 jaw — see tool.ros2control for the jaw's servo_id=6).
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <ros2_control name="arm_hardware" type="system">
+
+    <xacro:if value="${'$(arg hardware)' == 'bridge'}">
+      <hardware>
+        <plugin>$(arg hardware_plugin)</plugin>
+        <param name="state_topic">$(arg motor_state_topic)</param>
+        <param name="cmd_topic_prefix">$(arg motor_cmd_prefix)</param>
+      </hardware>
+    </xacro:if>
+    <xacro:unless value="${'$(arg hardware)' == 'bridge'}">
+      <hardware>
+        <!-- Commands loop back as state. Nothing moves — for checking the
+             URDF/controller graph loads before the arm is powered. -->
+        <plugin>mock_components/GenericSystem</plugin>
+      </hardware>
+    </xacro:unless>
+
+    <xacro:macro name="arm_hw_joint" params="name servo_id">
+      <joint name="${name}">
+        <param name="servo_id">${servo_id}</param>
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:macro>
+
+    <xacro:arm_hw_joint name="arm_joint_base"       servo_id="1"/>
+    <xacro:arm_hw_joint name="arm_joint_shoulder"   servo_id="2"/>
+    <xacro:arm_hw_joint name="arm_joint_elbow"      servo_id="3"/>
+    <xacro:arm_hw_joint name="arm_joint_wrist_tilt" servo_id="4"/>
+    <xacro:arm_hw_joint name="arm_joint_wrist_roll" servo_id="5"/>
+
+  </ros2_control>
+
+</robot>

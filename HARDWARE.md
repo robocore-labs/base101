@@ -107,8 +107,8 @@ independent between them.
    ```
    cd ~/Work/base101-fw && ./install.sh
    #  /dev/link101-zenoh  zenoh serial transport
-   #  /dev/axon-lidar     RPLidar C1 UART passthrough
-   #  /dev/axon-debug     firmware debug log
+   #  /dev/link101-lidar  RPLidar C1 UART passthrough
+   #  /dev/link101-debug  firmware debug log
    ```
 2. **RealSense udev rule** — the forge component's `privileged: true` +
    `devices:` mapping only grants the *container* USB access; the raw
@@ -134,6 +134,37 @@ independent between them.
    ```
    cd ~/Work/base101-fw/docker && docker compose up -d   # uses zenoh-serial.json5
    ```
+   (Or forge-managed, via this repo's `base101.yaml` `zenoh:` block + `forge
+   launch` — same container name/image either way; don't run both against
+   the same host.)
+
+   **The router must be restarted after a board re-enumeration** (e.g. its
+   watchdog reboots it and it comes back as `ttyACM1` instead of `ttyACM0`).
+   The host `/dev/link101-zenoh` symlink updates immediately, but `zenohd`
+   opened the *old* device node at startup and holds that fd — it doesn't
+   notice the symlink now points elsewhere until it reopens it, which only
+   happens on restart. Two things fix this together, not either alone:
+   - `router_docker: {volumes: ["/dev:/host-dev"], device_cgroup_rules:
+     ["c 166:* rmw"]}` in `base101.yaml` (mounts the live host `/dev` tree
+     instead of a fixed `devices:` mapping resolved once at container
+     start — otherwise a restart alone reopens a device the container
+     doesn't even have access to anymore) plus the listener endpoint in
+     `zenoh-serial.json5` pointed at `serial//host-dev/link101-zenoh#baudrate=921600`
+     (both bake in the *path*; see `base101-fw`'s `docker/zenoh-serial.json5`
+     — not this repo).
+   - a restart trigger, since nothing else prompts `zenohd` to reopen the
+     device on its own — `zenoh_watcher` (`docker/zenoh-watcher/`, forge
+     component in `base101.yaml`, runs on the robot alongside `drive`/
+     `autonomy`/`lidar`/`camera`). A small container that polls
+     `readlink -f /dev/link101-zenoh` (mounted read-only) every few
+     seconds and calls `docker restart zenoh_router` over a mounted
+     `/var/run/docker.sock` when the resolved target changes — see
+     `docker/zenoh-watcher/watch.sh`'s header for why polling rather than
+     watching udev/netlink events directly (would need host network
+     namespace + real netlink access from inside a container for the same
+     outcome). Deployed the same way as every other component —
+     `forge stage --refresh && forge launch` picks it up, nothing to do on
+     the host outside of forge.
 4. **rmw_zenoh** — every ROS 2 shell that should see the board:
    ```
    export RMW_IMPLEMENTATION=rmw_zenoh_cpp
@@ -184,7 +215,7 @@ reflash — the host side stays unchanged.
 - **Lidar (RPLidar C1)** on the firmware passthrough port:
   ```
   ros2 launch base101_lidar lidar.launch.py \
-    serial_port:=/dev/axon-lidar frame_id:=lidar_frame
+    serial_port:=/dev/link101-lidar frame_id:=lidar_frame
   ```
   Publishes the filtered `/scan_filtered` (self-hits on the payload deck
   stripped — see `base101_lidar/README.md`), not the raw driver output.
@@ -213,9 +244,35 @@ sim (`*.sim.yaml`) — everything else in those configs is shared.
 
 ## Tower / arms
 
-The deck-mounted mod101 arm (`base101_arm_*`) is **sim-only** for now. The Axon
-firmware does expose `/motor_manager/arm_cmd` (ST3215 servos) for a future arm
-bring-up.
+The deck-mounted mod101 arm (`arm:=true`) now runs on hardware too, via
+`link101-fw`'s per-servo topics — unlike locomotion, the arm still goes
+through `ros2_control` (MoveIt needs `FollowJointTrajectory`, which wants a
+`JointTrajectoryController` underneath it):
+
+| Topic | Type | Purpose |
+|---|---|---|
+| `/link101/servos/servo_<id>/command` | `std_msgs/Float64` | Position command (rad), one topic per discovered servo. `base101_control_plugin/ROS2ControlBridge` (below) addresses each joint by its configured `servo_id`, not by array position. |
+| `/link101/joint_states` | `sensor_msgs/JointState` | Batch state (position + velocity), matched **by name** — requires the firmware's servo ID table to map IDs 1-5 to `arm_joint_base`...`arm_joint_wrist_roll` and ID 6 to `arm_6` (mod101's own Feetech ID convention: 1-5 arm, 6 jaw). An ID outside that table reports as `servo_<id>`, which won't match anything and simply never updates. |
+| `/link101/servos/servo_<id>/{current,voltage,load,temperature}` | various | Per-servo telemetry, not consumed by ros2_control. |
+
+`src/base101/base101_control_plugin` (`ROS2ControlBridge`) is the
+`ros2_control` `SystemInterface` bridging to those topics —
+`src/base101/base101_control/urdf/base101_arm.hardware.xacro` declares the 5
+arm joints against it; the tool joint (`arm_6`) gets its own block from
+`mod101_tool_jaws/urdf/tool.ros2control`, pointed at the same plugin/topics
+via `mod101_macro.xacro`'s document-global xacro args (overridden in
+`base101_bringup_hw/launch/robot.launch.py`) rather than mod101's own default
+(`ros2_control_bridge/TopicBridge` on `/motor_manager/*`, its separate USB
+Feetech bus — base101's arm servos share the Axon 2 board/firmware with the
+wheels instead).
+
+```
+ros2 launch base101_bringup_hw robot.launch.py arm:=true
+ros2 launch base101_bringup_hw robot.launch.py arm:=true hardware:=mock   # dry run, nothing moves
+```
+
+Only the `jaws` tool has a hardware path (same limitation as mod101's own
+`mod101_hw_bringup` — see its README's "Not done yet").
 
 The cross tower is parked out of the build in [`attic/`](attic/README.md) — its
 deck mount no longer matches the re-exported chassis, and no real driver was

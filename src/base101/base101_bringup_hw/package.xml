@@ -34,6 +34,16 @@
   <exec_depend>rosboard</exec_depend>
   <exec_depend>robot_localization</exec_depend>  <!-- host-side EKF, odom -> base_link -->
 
+  <!-- arm:=true only — ros2_control for the arm (see base101_arm.hardware.xacro
+       / controllers.hw.yaml). Same convention as base101_bringup_gazebo's
+       package.xml: mod101_description/base101_arm_moveit_config are
+       deliberately NOT declared, mod101 is a separate repo/underlay. -->
+  <exec_depend>base101_control_plugin</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>position_controllers</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+
   <!-- display.launch.py only -->
   <exec_depend>rviz2</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>

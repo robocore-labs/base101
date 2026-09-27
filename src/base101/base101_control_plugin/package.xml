@@ -3,11 +3,15 @@
   <name>base101_control_plugin</name>
   <version>0.0.1</version>
   <description>
-    ros2_control SystemInterface that bridges controller command/state
-    interfaces to the base101 motor_manager topics (the on-board Axon 2
-    firmware node over zenoh): publishes per-wheel velocities to
-    /motor_manager/base_cmd and reads /motor_manager/joint_states back.
-    Vendored from LLMy's llmy_control_plugin (same robot-agnostic bridge).
+    ros2_control SystemInterface that bridges the arm's command/state
+    interfaces to the Axon 2 firmware's (link101-fw) per-servo topics over
+    zenoh: publishes each joint's position to
+    &lt;cmd_topic_prefix&gt;/servo_&lt;servo_id&gt;/command and matches state
+    back from a single JointState topic by joint name. Locomotion talks to
+    the firmware directly and does not use this plugin — see
+    attic/README.md in the base101 repo for why the original wheel/arm/
+    camera version of this bridge was parked, and this arm-only version
+    resurrected in its place.
   </description>
 
   <maintainer email="cristidragomir97@gmail.com">Cristi Dragomir</maintainer>

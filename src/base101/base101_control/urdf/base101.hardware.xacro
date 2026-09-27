@@ -8,13 +8,20 @@
   <xacro:arg name="simulator" default="none"/>
   <xacro:include filename="$(find base101_description)/urdf/base101.xacro"/>
 
-  <!-- No <ros2_control> block here: the Axon 2 firmware (base101-fw) owns
-       locomotion — /link101/cmd_vel in — but odometry is NOT fused on the
-       firmware: it only exposes raw wheel odometry (/link101/odom/raw) and
-       raw IMU (/link101/imu), no TF of its own. A host-side EKF
-       (base101_bringup_hw/launch/robot.launch.py) fuses those into /odom +
-       odom -> base_link instead. No /joint_states either way (the wheel
-       joints just sit at 0 in RViz — cosmetic only, nothing downstream needs
-       them). See HARDWARE.md for the full topic contract. -->
+  <!-- No <ros2_control> block for the WHEELS: the Axon 2 firmware
+       (base101-fw) owns locomotion — /link101/cmd_vel in — but odometry is
+       NOT fused on the firmware: it only exposes raw wheel odometry
+       (/link101/odom/raw) and raw IMU (/link101/imu), no TF of its own. A
+       host-side EKF (base101_bringup_hw/launch/robot.launch.py) fuses those
+       into /odom + odom -> base_link instead. No /joint_states for the
+       wheels either way (they just sit at 0 in RViz — cosmetic only,
+       nothing downstream needs them). See HARDWARE.md for the full topic
+       contract.
+
+       The ARM (arm:=true) is different: it still wants ros2_control, for
+       MoveIt's FollowJointTrajectory execution — see base101_arm.hardware.xacro. -->
+  <xacro:if value="$(arg arm)">
+    <xacro:include filename="$(find base101_control)/urdf/base101_arm.hardware.xacro"/>
+  </xacro:if>
 
 </robot>

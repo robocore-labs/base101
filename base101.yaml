@@ -5,13 +5,32 @@ ros_domain_id: 0
 registry: dragomirxyz
 image_prefix: base101
 
+# Without this, forge defaults to fastdds (core/config.py's is_zenoh checks
+# this value, not just whether a `zenoh:` block is present) — regenerates
+# docker-compose.yml with RMW_IMPLEMENTATION=rmw_fastrtps_cpp and a
+# dds_server/discovery-server component instead of a zenoh_router, which is
+# incompatible with the Axon 2/link101 firmware: it's a native rmw_zenoh
+# node (Pico-ROS + zenoh-pico), not a plain DDS participant — see
+# HARDWARE.md's "export RMW_IMPLEMENTATION=rmw_zenoh_cpp" host setup step.
+rmw_implementation: zenoh
 
 zenoh:
   router_image: axon-zenohd:latest
   router_port: 7447
   router_command: "-c /etc/zenoh/serial.json5"
-  router_devices:
-    - "/dev/link101-zenoh:/dev/axon-zenoh"
+  # NOT router_devices: a fixed device mapping resolves to the current
+  # major/minor at container start, so a Link101 USB re-enumeration (host
+  # udev updates /dev/link101-zenoh to point at the new ttyACM index) leaves
+  # a running container holding the stale character device. Mounting the
+  # whole host /dev tree instead means the container always resolves the
+  # symlink live. `c 166:*` is the USB ACM (cdc_acm) major device number —
+  # `rmw` (read/mknod/write) lets the router open whichever ttyACM node the
+  # symlink currently targets without being privileged.
+  router_docker:
+    volumes:
+      - "/dev:/host-dev"
+    device_cgroup_rules:
+      - "c 166:* rmw"
 
 hosts:
   - name: robot
@@ -70,9 +89,23 @@ components:
 
   - name: camera
     runs_on: robot
-    privileged: true               
+    privileged: true
     source:
       - src/base101/base101_camera
     devices:
       - /dev/bus/usb:/dev/bus/usb
     entrypoint: ros2 launch base101_camera camera.launch.py
+
+  # Not a ROS component — see docker/zenoh-watcher/. Restarts zenoh_router
+  # when /dev/link101-zenoh's target changes (board re-enumeration after a
+  # watchdog reboot): the router's `router_docker` volume mount above keeps
+  # the symlink resolution live, but zenohd itself still holds the fd to
+  # whatever device it opened at startup until restarted — nothing else
+  # prompts that restart. See HARDWARE.md's "Host one-time setup" step 3.
+  - name: zenoh_watcher
+    runs_on: robot
+    build: docker/zenoh-watcher
+    volumes:
+      - "/dev:/watch-dev:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    entrypoint: /watch.sh
