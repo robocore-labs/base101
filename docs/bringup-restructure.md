@@ -1,5 +1,12 @@
 # base101 package restructure — two bringup packages
 
+> **Historical.** This is the 2026-08-22 proposal and its outcome. Since
+> then `robot.launch.py` was narrowed (SLAM/Nav/lidar/camera split into
+> separate forge components, incl. a `base101_autonomy` package), then on
+> 2026-09-27 widened back to own the whole graph as this doc originally
+> proposed — `base101_autonomy` was removed and forge deprecated (see
+> `PIXI.md`, `forge/README.md`). Read for the reasoning, not current state.
+
 Proposal, 2026-08-22. Replaces the `simple`/`arm` package split with one
 model + one config set + two launch owners.
 

@@ -46,17 +46,18 @@ saga, the udev rule) if a future camera swap runs into similar issues.
 ros2 launch base101_camera camera.launch.py
 ```
 
-Brought up as its own forge component (`camera` in `hardware.yaml` /
-`hardware.drive.yaml`), same as `lidar` — not launched from
-`base101_bringup_hw/launch/robot.launch.py`.
+Normally brought up by `base101_bringup_hw/launch/robot.launch.py`
+(`camera:=true`, the default), which includes the same `realsense2_camera`
+launch with the same params. This standalone launch is for bench-testing the
+camera without the rest of the graph.
 
-## USB passthrough
+## USB passthrough (forge/Docker only)
 
-Same pattern as the OAK-D used and for the same underlying reason:
-`hardware.yaml`/`hardware.drive.yaml` map `/dev/bus/usb` via `devices:` (not
-`volumes:` — a plain bind mount doesn't grant the container's cgroup
-permission to open the device nodes) plus `privileged: true`; see forge's
-own `docs/tips.md` "USB Devices"/"Camera Access" sections.
+Only relevant if you run this inside a container (the deprecated forge path,
+`forge/base101.yaml`): map `/dev/bus/usb` via `devices:` (not `volumes:` — a
+plain bind mount doesn't grant the container's cgroup permission to open the
+device nodes) plus `privileged: true`; see forge's own `docs/tips.md` "USB
+Devices"/"Camera Access" sections.
 
 **Also needs a host udev rule**, same category of issue as the Movidius one
 in `HARDWARE.md`'s "Host one-time setup": librealsense's own rule

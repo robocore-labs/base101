@@ -50,3 +50,11 @@ dist/
 
 # base101-fw lives in its own repo (see HARDWARE.md) -- ignore it if cloned here for convenience
 /firmware/
+
+# Bind-mounted container $HOME dirs (Gazebo/Qt/mesa shader cache, downloaded
+# Fuel models, saved maps, audit logs) -- 269 files of exactly this got
+# committed whole in 0b4298b ("a lot of stuff", 2026-09-15) before anyone
+# noticed. docker/sim/ itself is gone now (see PIXI.md), but this pattern
+# stays as a guard against the same mistake if a similar bind mount ever
+# comes back.
+docker/.*/home/

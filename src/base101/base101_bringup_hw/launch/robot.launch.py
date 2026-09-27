@@ -1,40 +1,47 @@
 #!/usr/bin/env python3
-"""base101 on real hardware — the drive stack, plus the arm if arm:=true.
+"""base101 on real hardware — the WHOLE graph, one launch.
 
     ros2 launch base101_bringup_hw robot.launch.py
-    ros2 launch base101_bringup_hw robot.launch.py camera:=oak_d
-    ros2 launch base101_bringup_hw robot.launch.py rosboard:=false
     ros2 launch base101_bringup_hw robot.launch.py arm:=true
-    ros2 launch base101_bringup_hw robot.launch.py arm:=true hardware:=mock
+    ros2 launch base101_bringup_hw robot.launch.py nav:=false slam:=false
+    ros2 launch base101_bringup_hw robot.launch.py lidar:=false camera:=false
+    ros2 launch base101_bringup_hw robot.launch.py rosboard:=false
 
-Scope is deliberately narrow: robot_state_publisher, twist_mux, the
-host-side EKF, base101_time, rosboard, and — arm:=true only — the arm's
-controller_manager. SLAM/nav (base101_autonomy) and the robocore agent are
-separate forge components/containers, launched independently; this package
-doesn't depend on either base101_slam/base101_nav/robocore_agent (see
-package.xml) and has no `nav:=`/`slam:=`/`agent:=` arguments to launch them
-with — see hardware.yaml / hardware.drive.yaml for how those actually get
-started.
+This is the mega-launch bringup-restructure.md originally proposed (2026-08-22:
+"Both [sim.launch.py and robot.launch.py] own the whole graph and expose the
+same argument contract, so muscle memory transfers between sim and robot") —
+what actually shipped for a while was narrower (robot_state_publisher +
+twist_mux + EKF + rosboard only), with SLAM/nav/lidar/camera split into
+separate forge components (base101_autonomy, base101_lidar, base101_camera)
+so each got its own container/restart boundary. That reasoning stops
+mattering once forge/Docker are out of the picture (see PIXI.md) — folding
+autonomy.launch.py, lidar.launch.py and camera.launch.py's content back in
+here, for one `pixi run -e hardware hardware` process tree on the robot.
 
-This narrower scope is *not* shared with base101_bringup_gazebo/launch/
-sim.launch.py, the sim counterpart — sim still launches everything
-(including nav/slam/agent) from one file/process, so its argument contract
-has `nav:=`/`slam:=`/`agent:=`/`world:=` that this file does not.
+Startup order:
 
-There is no ros2_control on the host for the WHEELS: the Axon 2 firmware
-owns locomotion (talks /link101/cmd_vel straight over zenoh) but only
-exposes raw wheel-encoder odometry and raw IMU — no fused odometry, no TF.
-The EKF below is what turns those into odom -> base_link and /odom; it's the
-one and only publisher of either on hardware. The ARM is different: it still
-runs through ros2_control (base101_control_plugin bridges its commands/state
-to the firmware's per-servo topics — see base101_arm.hardware.xacro and
-HARDWARE.md), for the same reason mod101's own hardware bring-up keeps
-ros2_control for the arm — MoveIt executes over FollowJointTrajectory, which
-needs a JointTrajectoryController underneath it.
+    robot_state_publisher + twist_mux + EKF + base101_time + rosboard +
+    lidar + camera                                (immediately)
+      -> [arm:=true] controller_manager + spawners  (2s after: waits on
+                                                      controller_manager's
+                                                      own service readiness)
+      -> +10 s: slam + nav                          (needs /tf + odom from
+                                                      the EKF above, and
+                                                      /scan_filtered from
+                                                      lidar; sim.launch.py
+                                                      uses the same kind of
+                                                      delay for the same
+                                                      reason, autonomy.
+                                                      launch.py used 10s
+                                                      specifically because
+                                                      hardware startup is
+                                                      less deterministic
+                                                      than sim)
 
-Start the host zenoh router and rmw_zenoh first — see HARDWARE.md.
+Locomotion still doesn't go through ros2_control (see the EKF/twist_mux
+comments below) — only the arm does, same as before this file grew.
 
-See docs/bringup-restructure.md.
+See HARDWARE.md, docs/bringup-restructure.md, PIXI.md.
 """
 
 import os
@@ -42,11 +49,18 @@ import re
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    TimerAction,
+)
 from launch.conditions import IfCondition
-from launch.substitutions import Command, LaunchConfiguration
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 
 
 def _configured_tool():
@@ -66,6 +80,15 @@ def _configured_tool():
         return m.group(1) if m else 'jaws'
     except Exception:
         return 'jaws'
+
+
+def _stack(package, launch_file, **launch_args):
+    """Include a stack launch (slam / nav) with sim time off — hardware only."""
+    return IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory(package), 'launch', launch_file)),
+        launch_arguments={'use_sim_time': 'false', **launch_args}.items(),
+    )
 
 
 # The link101-fw contract the arm's ros2_control bridge talks to (see
@@ -89,11 +112,15 @@ def _setup(context, *args, **kwargs):
     arm = arg('arm') == 'true'
     arm_tool = arg('arm_tool')
     hardware = arg('hardware')
+    lidar = arg('lidar') == 'true'
+    camera = arg('camera') == 'true'
+    nav = arg('nav') == 'true'
+    slam = arg('slam') == 'true'
+    agent = arg('agent') == 'true'
     # Same `moveit`/`sliders` aliasing as sim.launch.py's arm_control, minus
-    # actually launching move_group — this file has no `moveit:=` arg (see
-    # module docstring on scope); `arm_control:=trajectory` gets the same
-    # controller MoveIt would drive, launched from wherever move_group is
-    # (base101_arm_moveit_config, outside this package).
+    # actually launching move_group — this file has no `moveit:=` arg;
+    # `arm_control:=trajectory` gets the same controller MoveIt would drive,
+    # launched from wherever move_group is (base101_arm_moveit_config).
     _ALIASES = {'moveit': 'trajectory', 'sliders': 'position'}
     arm_control = _ALIASES.get(arg('arm_control'), arg('arm_control'))
     rosboard_port = arg('rosboard_port')
@@ -107,17 +134,15 @@ def _setup(context, *args, **kwargs):
         'xacro ',
         os.path.join(pkg_control, 'urdf', 'base101.hardware.xacro'),
         ' simulator:=none',
-        ' camera:=', arg('camera'),
+        # camera mesh/frame only — the camera *driver* is `camera:=`/
+        # camera_driver below, a separate concern. realsense is the only
+        # option with a real hardware driver in this repo (see
+        # base101_camera/launch/camera.launch.py's docstring); the mesh
+        # arg still accepts oak_d for a URDF-only look, but camera:=false
+        # controls whether anything actually starts.
+        ' camera:=realsense',
         ' arm:=', arg('arm'),
     ]
-    # arm_tool/hardware/hardware_plugin/motor_*_topic are only meaningful
-    # (and, for arm_tool, only declared as a xacro:arg at all) when arm:=true
-    # — mod101_config.xacro, which declares `tool`/`arm_tool`, is never
-    # included with arm:=false. Passing them unconditionally is harmless for
-    # a raw `xacro` CLI invocation (unlike sim.launch.py's xacro.process_file
-    # mappings=, which does validate), but keeping this conditional matches
-    # sim's convention and makes the arm:=false command line exactly what it
-    # was before this arm support existed.
     if arm:
         xacro_args += [
             ' arm_tool:=', arm_tool,
@@ -155,11 +180,8 @@ def _setup(context, *args, **kwargs):
     # (/link101/odom/raw) and raw IMU (/link101/imu, no orientation) — it
     # doesn't fuse them or publish TF itself. This EKF does both: fuses
     # wheel vx + gyro yaw rate, publishes odom -> base_link
-    # (publish_tf:true in ekf.hw.yaml) and /odom. Unconditional, unlike
-    # sim's EKF (base101_slam/launch/slam.launch.py, sim-only because
-    # diff_drive_controller already owns odom -> base_link there) — on
-    # hardware there is no other source of that transform to fall back on,
-    # slam/nav on or off. See HARDWARE.md's topic contract.
+    # (publish_tf:true in ekf.hw.yaml) and /odom. It's the one and only
+    # publisher of either on hardware, nav/slam on or off.
     ekf = Node(
         package='robot_localization',
         executable='ekf_node',
@@ -198,6 +220,56 @@ def _setup(context, *args, **kwargs):
         rosboard,
     ]
 
+    # --- lidar: RPLidar C1 + self-filter chain, folded in from the former
+    # base101_lidar/launch/lidar.launch.py (see its docstring for why the
+    # driver's raw output is filtered before anything downstream sees it).
+    if lidar:
+        filters_cfg = os.path.join(
+            get_package_share_directory('base101_lidar'), 'config',
+            'lidar_filters.yaml')
+        actions.append(Node(
+            package='rplidar_ros',
+            executable='rplidar_composition',
+            name='rplidar_composition',
+            output='screen',
+            parameters=[{
+                'serial_port': arg('lidar_serial_port'),
+                'serial_baudrate': int(arg('lidar_serial_baudrate')),
+                'frame_id': arg('lidar_frame_id'),
+                'inverted': False,
+                'angle_compensate': True,
+            }],
+            remappings=[('scan', '/scan_raw')],
+        ))
+        actions.append(Node(
+            package='laser_filters',
+            executable='scan_to_scan_filter_chain',
+            name='lidar_self_filter',
+            output='screen',
+            parameters=[filters_cfg],
+            remappings=[('scan', '/scan_raw'), ('scan_filtered', '/scan_filtered')],
+        ))
+
+    # --- camera: Intel RealSense D415, folded in from the former
+    # base101_camera/launch/camera.launch.py — see its docstring for the
+    # frame-naming derivation (base_frame_id, camera_name, why no separate
+    # static_transform_publisher is needed).
+    if camera:
+        camera_cfg = os.path.join(
+            get_package_share_directory('base101_camera'), 'config', 'd415.yaml')
+        actions.append(IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                PathJoinSubstitution([
+                    FindPackageShare('realsense2_camera'), 'launch', 'rs_launch.py'])),
+            launch_arguments={
+                'camera_name': 'camera',
+                'camera_namespace': '',
+                'base_frame_id': 'camera_link',
+                'device_type': 'd415',
+                'config_file': camera_cfg,
+            }.items(),
+        ))
+
     if arm:
         controller_manager = Node(
             package='controller_manager',
@@ -209,12 +281,12 @@ def _setup(context, *args, **kwargs):
         )
 
         def spawner(name):
-            # No OnProcessExit chaining (unlike sim.launch.py): there's no
-            # gz spawn step creating controller_manager out-of-band here —
-            # `controller_manager` above IS the process, started directly.
-            # `spawner` waits on the controller_manager services itself
-            # (default 10s timeout) before loading/activating, so it's safe
-            # to launch alongside it rather than sequence after it.
+            # No OnProcessExit chaining: there's no gz spawn step creating
+            # controller_manager out-of-band here — `controller_manager`
+            # above IS the process, started directly. `spawner` waits on
+            # the controller_manager services itself (default 10s timeout)
+            # before loading/activating, so it's safe to launch alongside
+            # it rather than sequence after it.
             return Node(
                 package='controller_manager',
                 executable='spawner',
@@ -236,6 +308,32 @@ def _setup(context, *args, **kwargs):
 
         actions.append(controller_manager)
         actions.append(TimerAction(period=2.0, actions=spawned))
+
+    # --- autonomy: SLAM + Nav2, folded in from the former
+    # base101_autonomy/launch/autonomy.launch.py — same +10s delay and same
+    # reasoning (both read /tf + odom from the EKF above, and slam/nav
+    # remain architecturally independent packages; this file only composes
+    # them, same as sim.launch.py does for the sim side).
+    tail = []
+    if slam:
+        tail.append(_stack('base101_slam', 'slam.launch.py'))
+    if nav:
+        tail.append(_stack('base101_nav', 'nav.launch.py', rviz='false'))
+    if agent:
+        # robocore_agent isn't vendored in every checkout of this workspace
+        # (see PIXI.md) — off by default so a plain `ros2 launch` doesn't
+        # fail looking for an executable that isn't built. Pass agent:=true
+        # once it's sourced.
+        tail.append(Node(
+            package='robocore_agent',
+            executable='agent',
+            name='robocore_agent',
+            output='screen',
+            arguments=['--profile', arg('profile')] if arg('profile') else [],
+            parameters=[{'use_sim_time': False}],
+        ))
+    if tail:
+        actions.append(TimerAction(period=10.0, actions=tail))
 
     return actions
 
@@ -266,15 +364,49 @@ def generate_launch_description():
                         'checking the URDF/controllers before the arm is '
                         'powered. Only meaningful with arm:=true.'),
         DeclareLaunchArgument(
+            'lidar', default_value='true', choices=['true', 'false'],
+            description='Start the RPLidar C1 driver + self-filter chain.'),
+        DeclareLaunchArgument(
+            'lidar_serial_port', default_value='/dev/link101-lidar',
+            description='RPLidar serial device — the udev-created symlink '
+                        'from HARDWARE.md, not a raw /dev/ttyACMn.'),
+        DeclareLaunchArgument(
+            'lidar_serial_baudrate', default_value='460800',
+            description='RPLidar C1 baud rate.'),
+        DeclareLaunchArgument(
+            'lidar_frame_id', default_value='lidar_frame',
+            description='Must match base101_description/chassis.xacro\'s '
+                        'lidar_frame — config/lidar_filters.yaml\'s angular '
+                        'bounds are measured against it.'),
+        DeclareLaunchArgument(
+            'camera', default_value='true', choices=['true', 'false'],
+            description='Start the RealSense D415 driver. (URDF mesh is '
+                        'always realsense on hardware — see the module '
+                        'docstring on why oak_d has no real driver here.)'),
+        DeclareLaunchArgument(
+            'nav', default_value='true', choices=['true', 'false'],
+            description='Nav2 (planner, controller, bt_navigator, smoother). '
+                        'Delayed +10s — needs /tf + odom from the EKF.'),
+        DeclareLaunchArgument(
+            'slam', default_value='true', choices=['true', 'false'],
+            description='EKF... slam_toolbox. Nav2 needs the map frame this '
+                        'publishes; with slam:=false nav sits in Activating '
+                        'until something else provides it.'),
+        DeclareLaunchArgument(
+            'agent', default_value='false', choices=['true', 'false'],
+            description='Run the robocore agent (JSON-RPC bridge). Off by '
+                        'default — not vendored in every checkout, see '
+                        'PIXI.md.'),
+        DeclareLaunchArgument(
+            'profile', default_value='',
+            description='robocore profile YAML, passed to the agent if '
+                        'agent:=true. Empty = agent\'s own default '
+                        'resolution.'),
+        DeclareLaunchArgument(
             'rosboard', default_value='true', choices=['true', 'false'],
             description='Run the rosboard web dashboard + teleop card.'),
         DeclareLaunchArgument(
             'rosboard_port', default_value='8888',
             description='HTTP/WS port for rosboard.'),
-        DeclareLaunchArgument(
-            'camera', default_value='realsense', choices=['realsense', 'oak_d'],
-            description='Depth module on the front bracket. On hardware this '
-                        'only picks the mesh and frames — the driver is '
-                        'started separately.'),
         OpaqueFunction(function=_setup),
     ])

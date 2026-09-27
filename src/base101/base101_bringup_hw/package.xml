@@ -4,17 +4,19 @@
   <name>base101_bringup_hw</name>
   <version>0.1.0</version>
   <description>
-    Hardware bringup for base101: one launch that starts
-    robot_state_publisher + twist_mux + a host-side EKF + rosboard on the
-    real robot — the drive stack only. The Axon 2 firmware owns the whole
-    control loop itself (locomotion, odometry) over zenoh — there is no
-    ros2_control on the host side. Also owns the RViz-only display launch.
-    Deliberately does NOT depend on base101_slam/base101_nav/robocore_agent
-    — those are separate forge components (base101_autonomy for slam+nav,
-    its own agent component), not launched from here. Not the sim
-    counterpart's argument contract: base101_bringup_gazebo/launch/
-    sim.launch.py still launches everything including slam/nav/agent from
-    one file, so its args are a superset of this one's.
+    Hardware bringup for base101: one launch that starts the WHOLE graph on
+    the real robot — robot_state_publisher, twist_mux, a host-side EKF,
+    rosboard, the RPLidar C1 + self-filter chain, the RealSense D415, SLAM +
+    Nav2, and (arm:=true) the arm's ros2_control — same argument contract as
+    base101_bringup_gazebo/launch/sim.launch.py, per docs/
+    bringup-restructure.md's original design. Used to be narrower
+    (robot_state_publisher/twist_mux/EKF/rosboard only) with lidar/camera/
+    autonomy split into separate forge/Docker components for their own
+    container restart boundaries — that reasoning doesn't apply once forge
+    is out of the picture (PIXI.md), so they're folded back in here. The
+    Axon 2 firmware still owns locomotion itself (over zenoh) — there is no
+    ros2_control on the host side for the wheels, only the arm. Also owns
+    the RViz-only display launch.
   </description>
 
   <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
@@ -33,6 +35,22 @@
   <exec_depend>xacro</exec_depend>
   <exec_depend>rosboard</exec_depend>
   <exec_depend>robot_localization</exec_depend>  <!-- host-side EKF, odom -> base_link -->
+
+  <!-- Sensors — folded in from the former base101_lidar/base101_camera
+       forge components (see module docstring). -->
+  <exec_depend>rplidar_ros</exec_depend>
+  <exec_depend>laser_filters</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+
+  <!-- Autonomy — folded in from the former base101_autonomy forge
+       component. base101_slam/base101_nav remain independent packages
+       with their own launch files (nav_restructure.md); this package only
+       composes them, same as base101_bringup_gazebo already does. -->
+  <exec_depend>base101_slam</exec_depend>
+  <exec_depend>base101_nav</exec_depend>
+  <!-- robocore_agent: NOT declared, same as base101_arm_moveit_config below
+       — not vendored in every checkout (see PIXI.md), agent:=false by
+       default so that's fine. Add it back once it's actually sourced. -->
 
   <!-- arm:=true only — ros2_control for the arm (see base101_arm.hardware.xacro
        / controllers.hw.yaml). Same convention as base101_bringup_gazebo's

@@ -112,20 +112,21 @@ Manual test procedures for every variant, tool and launch combination are in
 ### On the real robot
 
 Motors, IMU and lidar all hang off the Axon 2 board and talk to ROS 2 over
-zenoh. `robot.launch.py`'s scope is deliberately narrow — the drive stack
-only (`robot_state_publisher`, `twist_mux`, a host-side EKF fusing the
-firmware's raw odometry, `rosboard`) — so cmd_vel goes straight from
-`twist_mux` to the firmware and SLAM/Nav2 are a second, independent launch:
+zenoh. `robot.launch.py` owns the whole graph, same shape as `sim.launch.py`
+— cmd_vel goes straight from `twist_mux` to the firmware, and `lidar:=`/
+`camera:=`/`nav:=`/`slam:=`/`agent:=` all come up from the one launch:
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_bringup_hw robot.launch.py   # drive stack: wheels, IMU, EKF, rosboard
-ros2 launch base101_autonomy   autonomy.launch.py  # separately: SLAM + Nav2
+ros2 launch base101_bringup_hw robot.launch.py
 ```
 
 Firmware, the zenoh router, serial devices, udev rules, and the full
 topic/node map (what talks to what, and where odometry gets fused):
-[`HARDWARE.md`](HARDWARE.md).
+[`HARDWARE.md`](HARDWARE.md) — including what's still unresolved about
+*how* you get a ROS environment on the robot to run this in, now that forge
+(see "Related Projects" below) is deprecated in favor of pixi
+([`PIXI.md`](PIXI.md), sim-only for now).
 
 ## Adding the mod101 arm
 
@@ -210,10 +211,9 @@ No joystick, no terminal, no extra install — two ways:
   separate **Teleop** card. (Position commands deliberately *aren't* zeroed by
   the publish watchdog the way Twist is, so the arm holds its pose when the
   browser goes quiet.)
-- **`base101_teleop`** — a zero-dependency fallback if rosboard is unhappy:
-  `ros2 run base101_teleop server` → `http://localhost:8700/`. Same sliders plus
-  a hold-to-drive base pad. See
-  [`src/base101_teleop/README.md`](src/base101_teleop/README.md).
+- **`base101_teleop`** — parked in [`attic/`](attic/README.md): its controller
+  topics predate the single-arm consolidation and no longer match this
+  robot. rosboard's Joint sliders card above is the current fallback.
 
 ## Simulation
 
@@ -259,29 +259,29 @@ the folders are purely organisational. Packages parked out of the build live in
 | Package | Type | Purpose |
 |---|---|---|
 | `base101_bringup_gazebo` | ament_cmake | `sim.launch.py` — the whole robot in Gazebo: model, controllers, bridges, SLAM, Nav2, optionally arm + MoveIt. |
-| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the drive stack on real hardware: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`, and (`arm:=true`) the arm's `controller_manager`. Deliberately **not** the same graph or argument contract as `sim.launch.py` — no `nav:=`/`slam:=`/`agent:=` here. Also owns `display.launch.py` (RViz only). |
-| `base101_autonomy` | ament_cmake | `autonomy.launch.py` — **hardware only.** Composes `base101_slam` + `base101_nav` in one launch/forge component, independent of `base101_bringup_hw`. This is how SLAM/Nav2 come up on the real robot now; sim still gets them from `sim.launch.py`'s `nav:=`/`slam:=` args directly. |
+| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the whole robot on real hardware, same argument contract as `sim.launch.py`: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`, lidar, camera, SLAM/Nav2 (`nav:=`/`slam:=`), robocore agent (`agent:=`), and (`arm:=true`) the arm's `controller_manager`. Also owns `display.launch.py` (RViz only). |
 
 Arm or no arm is the `arm:=` argument, not a package. Before the 2026-08
 restructure it was six packages (`base101_simple_{description,gazebo,control}`
 and `base101_arm_{description,gazebo,control}`) expressing one boolean — see
-[`docs/bringup-restructure.md`](docs/bringup-restructure.md).
+[`docs/bringup-restructure.md`](docs/bringup-restructure.md). A third bringup
+package, `base101_autonomy` (SLAM+Nav2 as their own hardware forge
+component), existed briefly and was removed once `base101_bringup_hw` went
+back to owning the whole graph directly.
 
 **Other tooling** — `src/`
 
 | Package | Type | Purpose |
 |---|---|---|
-| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by `base101_bringup_gazebo` (`agent:=false` to skip); on hardware it's a separate, not-yet-wired forge component (see `hardware.yaml`'s `agent`, still blocked on `arm:=true` — `base101_bringup_hw` no longer depends on it at all). Commands `/cmd_vel_agent` at twist_mux priority 50. |
+| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by both bringup packages (`agent:=false` to skip); **not vendored in this workspace** (see `PIXI.md`) — `agent:=true` needs it sourced from elsewhere first. Commands `/cmd_vel_agent` at twist_mux priority 50. |
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
-| `base101_teleop` | ament_python | Standalone single-page web teleop (base + every joint) on `:8700`. Fallback for the rosboard Joint sliders card. |
-| `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for tower + arms). |
+| `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for the arm). |
 
 ```mermaid
 graph TD
     subgraph bringup["bringup — what you launch"]
         SIM["base101_bringup_gazebo<br/><i>sim.launch.py</i>"]
         HW["base101_bringup_hw<br/><i>robot.launch.py, display.launch.py</i>"]
-        AUTO["base101_autonomy<br/><i>autonomy.launch.py</i><br/>(hardware only)"]
     end
 
     subgraph stacks["stacks — own launch, composed above"]
@@ -302,7 +302,7 @@ graph TD
     SIM --> DESC & CTRL & GZ
     HW  --> DESC & CTRL
     SIM -.->|composes, nav:=/slam:=| SLAM & NAV & MOVEIT
-    AUTO -.->|composes| SLAM & NAV
+    HW  -.->|composes, nav:=/slam:=| SLAM & NAV
 
     DESC -->|arm:=true, inside xacro:if| MOD
     CTRL -->|hardware xacro| PLUGIN
@@ -311,19 +311,19 @@ graph TD
 
 Solid arrows are build/`xacro:include` dependencies; dashed arrows are runtime
 composition — a bringup package including a stack's launch file, and the
-`gz_ros2_control` controller-file lookup resolved at Gazebo spawn. Note `HW`
-has no dashed arrow to `SLAM`/`NAV` anymore — on hardware that's `AUTO`'s job,
-launched separately and not depended on by `HW` at all; the two only agree by
-convention on `/tf`, `/odom` and `/scan_filtered` already being on the wire.
+`gz_ros2_control` controller-file lookup resolved at Gazebo spawn. `HW` and
+`SIM` compose `SLAM`/`NAV` the same way now (`HW` used to hand that off to a
+separate `base101_autonomy` forge component; that package is gone, `HW`
+composes them directly).
 
 ## Deeper docs
 
 **Use it**
 
 - **[`HARDWARE.md`](HARDWARE.md)** — real-robot bringup: Axon 2 firmware, the zenoh router, serial devices, udev
+- **[`PIXI.md`](PIXI.md)** — running the sim stack natively (macOS included) via pixi instead of Docker/forge
 - **[`docs/testing.md`](docs/testing.md)** — manual test procedures for every configuration, tool and launch combination
-- **[`docs/findings-open.md`](docs/findings-open.md)** — known-open issues: the arm has no hardware path, an unconfirmed cold-map nav abort, an inflation-radius warning
-- **[`docs/bringup-restructure.md`](docs/bringup-restructure.md)** — why there are two bringup packages and one description
+- **[`docs/findings-open.md`](docs/findings-open.md)** — known-open issues (arm hardware support landed since this was last updated — see `HARDWARE.md`'s "Tower / arms")
 
 **Build on it**
 
@@ -337,12 +337,13 @@ convention on `/tf`, `/odom` and `/scan_filtered` already being on the wire.
 - **[`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md)** — dual-arm integration: mount-point measurement, the arm-yaw fix, the stale-`robot_state_publisher` gotcha
 - **[`docs/worklogs/tower.md`](docs/worklogs/tower.md)** — the parked cross tower
 - **[`docs/worklogs/nav.md`](docs/worklogs/nav.md)**, **[`docs/worklogs/nav_restructure.md`](docs/worklogs/nav_restructure.md)** — Nav2 + slam_toolbox porting notes, and why the two stacks are deliberately independent
+- **[`docs/bringup-restructure.md`](docs/bringup-restructure.md)** — why there were two bringup packages and one description; its own target state (bringup owns the whole graph) is what actually shipped, just later than it originally planned and via a further rewrite it doesn't describe
 
 ## Related Projects
 
 - **[mod101](https://github.com/robocore-dev/mod101)** — 5+1 DOF modular robot arm
 - **[Axon](https://github.com/robocore-dev/axon)** — Multi-protocol controller board
-- **[Forge](https://github.com/robocore-dev/forge)** — ROS2 deployment orchestration
+- **[Forge](https://github.com/robocore-dev/forge)** — ROS2 deployment orchestration. Was base101's hardware deployment mechanism; deprecated in favor of running `pixi` directly on the robot (see `PIXI.md`) — `forge/base101.yaml` is kept as a reference, not the recommended path.
 
 ## License
 MIT
