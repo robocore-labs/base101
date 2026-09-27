@@ -1,15 +1,19 @@
 # Cross tower worklog
 
-> **Note (post-consolidation):** the tower now lives in its own package,
-> `base101_dual_arm`. Paths below that say `base101_description/urdf/
-> base101_tower.xacro` are now `base101_dual_arm/urdf/tower.xacro`
-> (+ `tower.gazebo`, `tower.ros2control`), and the meshes are under
-> `base101_dual_arm/meshes/tower/`. The geometry/debugging notes still apply.
+> **Note (parked, not post-consolidation):** there never was a
+> `base101_dual_arm` package. The tower is parked in
+> [`attic/base101_tower`](../../attic/README.md) (`base101_tower_description`/
+> `_control`/`_gazebo`) — out of `src/`, unbuilt — since the chassis CAD
+> re-export shrank the deck and moved it onto standoffs, so
+> `tower_mount_xyz` no longer lands the column anywhere real. See
+> `attic/README.md` for the (currently unfinished) path to reviving it. The
+> geometry/debugging notes below are about the tower as it was measured
+> against the *old* deck; they're a starting point for re-deriving
+> `tower_mount_xyz`, not something to trust as-is.
 
 Notes from merging `base101_cross_description` (a standalone Fusion CAD
 export of the simple chassis + tower) into the base101 workspace, plus the
-geometry-debugging passes that followed. Current state is whatever's in
-`base101_dual_arm/urdf/tower.xacro` at HEAD.
+geometry-debugging passes that followed.
 
 ## Origin
 

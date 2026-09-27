@@ -67,11 +67,12 @@ source (servo feedback), not this firmware.
 The firmware exposes raw sensors only — no fusion, no TF. A `robot_localization`
 EKF (`ekf_filter_node`, `base101_control/config/ekf.hw.yaml`) owns that
 instead, launched unconditionally from
-`base101_bringup_hw/launch/robot.launch.py` — that package's whole scope is
-robot_state_publisher + twist_mux + this EKF + rosboard now; SLAM/nav are a
-separate `base101_autonomy` package/forge component (see "Navigation / SLAM"
-below), not something `robot.launch.py` launches or even depends on. It's
-the **one and only** publisher of `/odom` and `odom → base_link` on hardware:
+`base101_bringup_hw/launch/robot.launch.py` — that package now owns the
+*whole* graph (robot_state_publisher, twist_mux, this EKF, rosboard, lidar,
+camera, SLAM/Nav2, and arm ros2_control if `arm:=true`; see "Bring up the
+base" below), the same `nav`/`slam`/`agent` argument contract
+`sim.launch.py` has. It's the **one and only** publisher of `/odom` and
+`odom → base_link` on hardware:
 
 | Input | Fused | Not fused |
 |---|---|---|
@@ -134,37 +135,36 @@ independent between them.
    ```
    cd ~/Work/base101-fw/docker && docker compose up -d   # uses zenoh-serial.json5
    ```
-   (Or forge-managed, via this repo's `base101.yaml` `zenoh:` block + `forge
-   launch` — same container name/image either way; don't run both against
-   the same host.)
+   (There's also a forge-managed path — `forge/base101.yaml`'s `zenoh:`
+   block + `forge -p . -f forge/base101.yaml launch` — but forge itself is
+   deprecated as of this repo's move to pixi-on-the-robot, see `PIXI.md`.
+   Don't run both against the same host either way — same container
+   name/image, they'd collide.)
 
    **The router must be restarted after a board re-enumeration** (e.g. its
    watchdog reboots it and it comes back as `ttyACM1` instead of `ttyACM0`).
    The host `/dev/link101-zenoh` symlink updates immediately, but `zenohd`
    opened the *old* device node at startup and holds that fd — it doesn't
    notice the symlink now points elsewhere until it reopens it, which only
-   happens on restart. Two things fix this together, not either alone:
-   - `router_docker: {volumes: ["/dev:/host-dev"], device_cgroup_rules:
-     ["c 166:* rmw"]}` in `base101.yaml` (mounts the live host `/dev` tree
-     instead of a fixed `devices:` mapping resolved once at container
-     start — otherwise a restart alone reopens a device the container
-     doesn't even have access to anymore) plus the listener endpoint in
-     `zenoh-serial.json5` pointed at `serial//host-dev/link101-zenoh#baudrate=921600`
-     (both bake in the *path*; see `base101-fw`'s `docker/zenoh-serial.json5`
-     — not this repo).
+   happens on restart. Two things needed together, not either alone:
+   - mount the live host `/dev` tree into the router rather than a fixed
+     `devices:` mapping resolved once at container start (otherwise a
+     restart alone reopens a device the container doesn't even have access
+     to anymore), and point the listener endpoint in `zenoh-serial.json5`
+     at `serial//host-dev/link101-zenoh#baudrate=921600` — see
+     `base101-fw`'s `docker/zenoh-serial.json5`, not this repo. Expressed
+     as `router_docker: {volumes: [...], device_cgroup_rules: [...]}` in
+     the forge config if you're still on that path.
    - a restart trigger, since nothing else prompts `zenohd` to reopen the
-     device on its own — `zenoh_watcher` (`docker/zenoh-watcher/`, forge
-     component in `base101.yaml`, runs on the robot alongside `drive`/
-     `autonomy`/`lidar`/`camera`). A small container that polls
-     `readlink -f /dev/link101-zenoh` (mounted read-only) every few
-     seconds and calls `docker restart zenoh_router` over a mounted
-     `/var/run/docker.sock` when the resolved target changes — see
-     `docker/zenoh-watcher/watch.sh`'s header for why polling rather than
-     watching udev/netlink events directly (would need host network
-     namespace + real netlink access from inside a container for the same
-     outcome). Deployed the same way as every other component —
-     `forge stage --refresh && forge launch` picks it up, nothing to do on
-     the host outside of forge.
+     device on its own. `docker/zenoh-watcher/` in this repo (a poll loop +
+     `docker restart zenoh_router` over a mounted `/var/run/docker.sock` —
+     see its `watch.sh` header for why polling rather than watching
+     udev/netlink events directly) was built as a forge component and
+     deployed the same way as the other forge-managed containers.
+     **Not yet adapted for the pixi/no-Docker-on-hardware direction** — if
+     you're not running forge, you need some other restart trigger here
+     (a host systemd unit + udev rule is the non-Docker equivalent; ask
+     if you want that instead of the container).
 4. **rmw_zenoh** — every ROS 2 shell that should see the board:
    ```
    export RMW_IMPLEMENTATION=rmw_zenoh_cpp
@@ -173,26 +173,34 @@ independent between them.
 ## Bring up the base
 
 ```
-source /opt/ros/jazzy/setup.bash
-source ~/Work/base101/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 ros2 launch base101_bringup_hw robot.launch.py
 ```
 
-This starts `robot_state_publisher` (from `base101.hardware.xacro`,
-`simulator:=none`, no `ros2_control` block), a `twist_mux` (`use_stamped:
-true`) in front of `/link101/cmd_vel` — straight to the firmware, no
-controller_manager in between — the EKF described above, and `rosboard`,
-all unconditionally. That's the whole scope of this launch: SLAM/nav are a
-separate `base101_autonomy` package, brought up with
+`robot.launch.py` owns the **whole** graph now — same shape as
+`sim.launch.py`, per `docs/bringup-restructure.md`'s original design.
+Unconditional: `robot_state_publisher` (from `base101.hardware.xacro`,
+`simulator:=none`), `twist_mux` (`use_stamped:true`) in front of
+`/link101/cmd_vel` — straight to the firmware, no controller_manager in
+between for the wheels — the EKF described above, and `rosboard`.
+Toggleable via launch args: `lidar:=`/`camera:=` (both default `true`),
+`nav:=`/`slam:=` (both default `true`, SLAM/Nav2 delayed +10s so they have
+`/tf` and `/scan_filtered` to work with), `agent:=` (default `false` — see
+`PIXI.md` for why), and `arm:=` (see "Tower / arms" below). `base101_lidar`/
+`base101_camera` remain independently launchable too, for bench-testing one
+sensor without the whole graph.
 
-```
-ros2 launch base101_autonomy autonomy.launch.py
-```
-
-(its own forge component in `hardware.yaml`/`hardware.drive.yaml`, not
-something `robot.launch.py` has flags for anymore).
+**How you get a ROS 2 Jazzy environment to run this in, on the actual
+robot, is presently unresolved.** It used to be forge-built Docker
+containers (now deprecated, see `PIXI.md`); the pixi-native replacement for
+hardware hasn't been built yet (`pixi.toml` only has `default`/`arm`, both
+sim). Until one of those lands, this launch file works fine under any
+Jazzy install that has the right packages (`robot_localization`,
+`slam_toolbox`, `navigation2`, `rplidar_ros`, `realsense2_camera`,
+`laser_filters`, `base101_control_plugin`'s build deps) sourced ahead of it
+— `/opt/ros/jazzy` if you have one, or forge's old containers if you're not
+ready to give those up yet.
 
 Drive it:
 ```
@@ -224,12 +232,15 @@ reflash — the host side stays unchanged.
 
 ## Navigation / SLAM
 
-On hardware, `base101_slam` + `base101_nav` are launched together via
-`base101_autonomy/launch/autonomy.launch.py` (its own forge component —
-see "Bring up the base" above) — a separate small package that composes
-the two without either depending on the other, and without pulling in
-`base101_bringup_hw`'s own dependencies. Both packages remain independent
-launch-wise (nav doesn't require slam to be running, or vice versa).
+On hardware, `base101_slam` + `base101_nav` are launched together directly
+from `robot.launch.py` (`nav:=`/`slam:=`, see "Bring up the base" above) —
+both remain independent packages with their own launch files (nav doesn't
+require slam to be running, or vice versa); `robot.launch.py` only composes
+them, the same way `sim.launch.py` already did for the sim side. (Used to
+be a separate `base101_autonomy` package/forge component, specifically to
+avoid pulling slam/nav's dependencies into `base101_bringup_hw` — moot now
+that `base101_bringup_hw/package.xml` depends on them directly; the package
+was removed.)
 
 `base101_slam`'s `slam_toolbox` consumes standard `/tf` + `/scan_filtered`
 and publishes only `map → odom` — it never touches `odom → base_link` (the

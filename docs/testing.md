@@ -341,21 +341,22 @@ diff <(grep -o 'link1="[^"]*" link2="[^"]*"' /tmp/before) \
 Lines only in `/tmp/before` are pairs the lower trial count wrongly disabled.
 Expect a handful; if it's dozens, the default needs raising.
 
-## 6. Real hardware (armless only)
+## 6. Real hardware
 
-The arm is sim-only: `controllers.hw.yaml` has no arm section and
-`base101.hardware.xacro` emits a `ros2_control` block for the wheels only, so
-`robot.launch.py` refuses `arm:=true` outright. See
-[findings-open.md](findings-open.md) #3.
+The wheels never go through `ros2_control` on hardware — the Axon 2 firmware
+owns locomotion directly over zenoh. The arm does (`arm:=true`,
+`base101_control_plugin` bridging to `link101-fw`'s per-servo topics) —
+ros2_control interfaces only, no MoveIt (see `HARDWARE.md`'s "Tower / arms").
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_bringup_hw robot.launch.py   # wheels only — that's this launch's whole scope now
-ros2 launch base101_autonomy autonomy.launch.py  # separately, for SLAM + Nav2
+ros2 launch base101_bringup_hw robot.launch.py               # whole graph, armless
+ros2 launch base101_bringup_hw robot.launch.py arm:=true     # + arm ros2_control
 ```
 
-See [HARDWARE.md](../HARDWARE.md). Note `controllers.hw.yaml` carries its own
-`wheel_separation` (hardware-calibrated, deliberately not the URDF value).
+See [HARDWARE.md](../HARDWARE.md) for the full topic contract and what's
+still unresolved about getting a ROS environment onto the robot itself now
+that forge is deprecated (see `PIXI.md`).
 
 ## 7. mod101 independence
 

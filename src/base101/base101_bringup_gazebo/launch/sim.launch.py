@@ -38,6 +38,7 @@ See docs/bringup-restructure.md.
 
 import os
 import re
+import sys
 
 import xacro
 from ament_index_python.packages import (
@@ -220,15 +221,41 @@ def _setup(context, *args, **kwargs):
     # topic stays silent, which is a nastier bug than a hard failure.
     gz_args = (f'-s -r --headless-rendering {world_file}' if headless
                else f'-r {world_file}')
-    gz_sim = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
-        launch_arguments={'gz_args': gz_args}.items(),
-    )
+
+    # macOS can't run gz sim's server + GUI in one process — documented
+    # upstream (https://gazebosim.org/docs/harmonic/getstarted/): "On macOS,
+    # you will need to run Gazebo using two terminals, one for the server
+    # and another for the GUI." (The GUI's own upstream note: "currently
+    # known to be unstable" there — not something this file works around,
+    # just splitting the two processes so it starts at all.) headless:=true
+    # is unaffected either way — it already only ever runs `-s`, no GUI.
+    gz_gui = None
+    if sys.platform == 'darwin' and not headless:
+        gz_sim = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
+            launch_arguments={'gz_args': f'-s -r {world_file}'}.items(),
+        )
+        gz_gui = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
+            launch_arguments={'gz_args': '-g'}.items(),
+        )
+    else:
+        gz_sim = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
+            launch_arguments={'gz_args': gz_args}.items(),
+        )
 
     clock_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
+        # Explicit name: parameter_bridge's own default node name is
+        # "ros_gz_bridge" — same as `bridge` below's explicit name. Left
+        # implicit, both nodes register as /ros_gz_bridge (ros2 node list
+        # warns about it), and only one is reliably addressable by name.
+        name='ros_gz_clock_bridge',
         arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
         output='screen',
     )
@@ -383,6 +410,7 @@ def _setup(context, *args, **kwargs):
         gz_resource_path,
         robot_state_publisher,
         gz_sim,
+        *([gz_gui] if gz_gui else []),
         clock_bridge,
         bridge,
         *image_bridges,

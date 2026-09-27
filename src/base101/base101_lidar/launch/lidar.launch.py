@@ -59,8 +59,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'serial_port', default_value='/dev/rplidar',
-            description='RPLidar serial device (forge maps the real device '
-                        'node to this path — see hardware.drive.yaml).'),
+            description='RPLidar serial device. robot.launch.py defaults to '
+                        '/dev/link101-lidar (the udev symlink, see HARDWARE.md).'),
         DeclareLaunchArgument(
             'serial_baudrate', default_value='460800',
             description='RPLidar C1 baud rate.'),

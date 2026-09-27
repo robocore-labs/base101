@@ -1,14 +1,18 @@
 # Dual mod101 arms worklog
 
-> **Note (post-consolidation):** the arms now live in `base101_dual_arm`.
-> `base101_description/urdf/base101_arms.xacro` → `base101_dual_arm/urdf/
-> arms.xacro`; `base101_control/config/controllers.arms.yaml` →
-> `base101_dual_arm/config/controllers.arms.yaml`.
+> **Note (superseded, not post-consolidation):** `base101_dual_arm` never
+> shipped — there's no such package in this repo, and there never has been.
+> The cross tower these dual arms mounted on is parked in
+> [`attic/base101_tower`](../../attic/README.md); dual-arm support was
+> parked along with it, unimplemented. Current base101 has exactly one
+> mod101 arm, via `base101_description/urdf/arm.xacro` (single-arm,
+> unprefixed-by-count) — see `docs/bringup-restructure.md`. The design
+> constraints and mount-point notes below are kept for whoever revives the
+> tower and wants a second arm on it; don't trust any file path mentioned
+> below to exist today.
 
 Notes from mounting two mod101 arms on the cross tower's crossbeam brackets.
-Current state is `base101_dual_arm/urdf/arms.xacro` +
-`base101_dual_arm/config/controllers.arms.yaml` at HEAD. The tower itself has
-its own worklog: [`tower.md`](tower.md).
+The tower itself has its own worklog: [`tower.md`](tower.md).
 
 ## Design constraints
 

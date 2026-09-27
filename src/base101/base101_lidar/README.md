@@ -34,6 +34,9 @@ ros2 launch base101_lidar lidar.launch.py
 ros2 launch base101_lidar lidar.launch.py serial_port:=/dev/ttyUSB0
 ```
 
-Brought up as its own forge component (`lidar` in `hardware.yaml` /
-`hardware.drive.yaml`), same as `camera` — not launched from
-`base101_bringup_hw/launch/robot.launch.py`.
+Normally brought up by `base101_bringup_hw/launch/robot.launch.py`
+(`lidar:=true`, the default — same driver + filter chain, inlined). This
+standalone launch is for bench-testing the lidar without the rest of the
+graph. Note the defaults differ: this file defaults `serial_port` to
+`/dev/rplidar`, `robot.launch.py` to `/dev/link101-lidar` (the udev symlink
+from `HARDWARE.md`).

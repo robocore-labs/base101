@@ -54,17 +54,15 @@ message claims a substantial run-time performance cost, and it may well be
 the same root cause as #1. Worth one pass with the real chassis
 cross-section.
 
-## 3. No hardware path for the arm
+## 3. No hardware path for the arm — RESOLVED
 
-`base101.hardware.xacro` emits a `ros2_control` block for the four wheel
-joints only, and `controllers.hw.yaml` has no arm section. There is nothing
-for an arm controller to claim on the real robot.
-
-`base101_bringup_hw` therefore **raises on `arm:=true`** rather than coming
-up half-working. Making it real needs, in order: a mod101 `SystemInterface`
-(or a second `ROS2ControlBridge` instance) in the hardware xacro, then the
-arm block mirrored from `controllers.sim.yaml`, then dropping the guard in
-`robot.launch.py`.
+`base101_control_plugin`'s `ROS2ControlBridge` bridges the arm's
+`ros2_control` interfaces to `link101-fw`'s per-servo topics;
+`base101_arm.hardware.xacro` declares the 5 arm joints against it, and
+`controllers.hw.yaml` has a real arm section (mirrored from
+`controllers.sim.yaml`, as this finding originally proposed).
+`base101_bringup_hw robot.launch.py arm:=true` works — no MoveIt, ros2_control
+only (position/trajectory controllers). See `HARDWARE.md`'s "Tower / arms".
 
 ## 4. MoveIt is not installed on this machine
 

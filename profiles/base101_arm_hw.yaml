@@ -12,24 +12,16 @@
 # subscription never fires, and the call blocks until it times out — which is
 # why these are worth a separate file rather than a comment.
 #
-# ARM: declared here, but NOT YET DRIVABLE ON HARDWARE. base101_bringup_hw
-# raises a RuntimeError on arm:=true — base101.hardware.xacro emits a
-# ros2_control block for the four wheel joints only, and controllers.hw.yaml
-# has no arm section. Two things unblock it:
+# ARM: drivable on hardware via base101_control_plugin (base101_arm.hardware.xacro
+# + the arm section of controllers.hw.yaml — see HARDWARE.md "Tower / arms").
+# controllers.hw.yaml DECLARES both the position and trajectory pairs; only
+# the position pair is spawned at boot, the agent loads the trajectory one on
+# demand at control-session entry (Phase 6 decision 9). Not yet verified on
+# the real robot.
 #
-#   1. an arm hardware interface in base101.hardware.xacro
-#   2. an arm section in controllers.hw.yaml DECLARING both the position and
-#      trajectory pairs. Only the position pair is spawned at boot; the agent
-#      loads a trajectory controller on demand at control-session entry
-#      (Phase 6 decision 9). Declaring is the precondition — load_controller
-#      needs the type and params already on the controller_manager, so
-#      omitting the trajectory entries makes TRAJECTORY sessions impossible
-#      rather than merely slow.
+# The manipulation block below mirrors base101_arm.yaml.
 #
-# The manipulation block below mirrors base101_arm.yaml so that when the
-# hardware interface lands, only the controller names need checking.
-#
-# Companion forge config: hardware.yaml at the repo root.
+# Companion launch: base101_bringup_hw/launch/robot.launch.py arm:=true.
 name: base101
 model: base101 + 1 mod101 arm (hardware)
 version: "0"
