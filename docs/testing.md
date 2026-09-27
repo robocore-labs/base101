@@ -24,8 +24,7 @@ colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python
 source install/setup.bash
 ```
 
-Expect 8 packages in mod101 and 15 in base101. `base101_control_plugin`
-produces stderr output during build; that is pre-existing and not a failure.
+Expect 8 packages in mod101 and 14 in base101.
 
 If you changed a mesh or deleted a file, `--symlink-install` will trip over the
 stale symlink. Clear the one package:
@@ -343,9 +342,9 @@ Expect a handful; if it's dozens, the default needs raising.
 
 ## 6. Real hardware (armless only)
 
-The arm is sim-only: `controllers.hw.yaml` has no arm section and
-`base101.hardware.xacro` emits a `ros2_control` block for the wheels only, so
-`robot.launch.py` refuses `arm:=true` outright. See
+There is no ros2_control on real hardware at all — locomotion goes straight
+to the Axon 2 firmware over `/cmd_vel`/`/odom` — and no arm hardware path
+either, so `robot.launch.py` refuses `arm:=true` outright. See
 [findings-open.md](findings-open.md) #3.
 
 ```bash
@@ -354,8 +353,9 @@ ros2 launch base101_bringup_hw robot.launch.py
 ros2 launch base101_bringup_hw robot.launch.py nav:=false   # wheels only
 ```
 
-See [HARDWARE.md](../HARDWARE.md). Note `controllers.hw.yaml` carries its own
-`wheel_separation` (hardware-calibrated, deliberately not the URDF value).
+See [HARDWARE.md](../HARDWARE.md). Note wheel geometry (`wheel_separation`
+etc.) is hardware-calibrated in the firmware's `axon_config.h` — deliberately
+not the URDF value, and no longer duplicated into a host-side yaml.
 
 ## 7. mod101 independence
 

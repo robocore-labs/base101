@@ -35,6 +35,7 @@ def _setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration('use_sim_time').perform(context) == 'true'
     autostart = LaunchConfiguration('autostart').perform(context) == 'true'
     rviz = LaunchConfiguration('rviz').perform(context) == 'true'
+    odom_topic = LaunchConfiguration('odom_topic').perform(context)
 
     config = {name: os.path.join(pkg_dir, 'config', f'{name}.yaml')
               for name in ('planner', 'controller', 'bt_navigator',
@@ -69,6 +70,7 @@ def _setup(context, *args, **kwargs):
             config['bt_navigator'],
             {
                 'use_sim_time': use_sim_time,
+                'odom_topic': odom_topic,
                 'default_nav_to_pose_bt_xml':
                     os.path.join(bt_dir, 'nav_to_pose.xml'),
                 'default_nav_through_poses_bt_xml':
@@ -83,7 +85,7 @@ def _setup(context, *args, **kwargs):
         name='velocity_smoother',
         output='screen',
         parameters=[config['velocity_smoother'],
-                    {'use_sim_time': use_sim_time}],
+                    {'use_sim_time': use_sim_time, 'odom_topic': odom_topic}],
         remappings=[('cmd_vel', 'cmd_vel_raw'),
                     ('cmd_vel_smoothed', 'cmd_vel_nav')],
     )
@@ -138,6 +140,15 @@ def generate_launch_description():
             choices=['true', 'false'],
             description='Open RViz with the nav/SLAM display config '
                         '(rviz:=false for headless runs).',
+        ),
+        DeclareLaunchArgument(
+            'odom_topic',
+            default_value='/diff_drive_controller/odom',
+            description='Wheel odometry topic bt_navigator/velocity_smoother '
+                        'read current velocity from. Sim keeps the '
+                        'diff_drive_controller default; base101_bringup_hw '
+                        'passes /odom (published directly by the Axon 2 '
+                        'firmware — see HARDWARE.md).',
         ),
         OpaqueFunction(function=_setup),
     ])

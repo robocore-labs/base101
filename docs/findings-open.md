@@ -56,15 +56,16 @@ cross-section.
 
 ## 3. No hardware path for the arm
 
-`base101.hardware.xacro` emits a `ros2_control` block for the four wheel
-joints only, and `controllers.hw.yaml` has no arm section. There is nothing
-for an arm controller to claim on the real robot.
+`base101.hardware.xacro` emits no `ros2_control` block at all now (real
+hardware bypasses ros2_control for locomotion — see #5's update), and there
+never was a `controllers.hw.yaml` arm section. There is nothing for an arm
+controller to claim on the real robot.
 
 `base101_bringup_hw` therefore **raises on `arm:=true`** rather than coming
-up half-working. Making it real needs, in order: a mod101 `SystemInterface`
-(or a second `ROS2ControlBridge` instance) in the hardware xacro, then the
-arm block mirrored from `controllers.sim.yaml`, then dropping the guard in
-`robot.launch.py`.
+up half-working. Making it real needs an arm hardware path first — likely the
+firmware exposing arm joints the same way it now exposes `/cmd_vel`/`/odom`,
+rather than a ros2_control `SystemInterface`, since locomotion no longer goes
+through one either — then dropping the guard in `robot.launch.py`.
 
 ## 4. MoveIt is not installed on this machine
 
@@ -86,16 +87,20 @@ Note the restructure did change two things MoveIt depends on:
 
 Both need a real run on a machine with MoveIt before they can be trusted.
 
-## 5. `base101_control/README.md` documents the wrong hardware interface
+## 5. `base101_control/README.md` documents the wrong hardware interface — RESOLVED
 
-It says the real-hardware plugin is `mock_components/GenericSystem`, "replace
-before flying". `base101.hardware.xacro` actually declares
+It said the real-hardware plugin is `mock_components/GenericSystem`, "replace
+before flying". `base101.hardware.xacro` actually declared
 `base101_control_plugin/ROS2ControlBridge` — the real Axon 2 firmware bridge
-over zenoh. The README is stale, describing a placeholder that has since been
-replaced. (`bringup-restructure.md` repeated the claim; corrected there.)
+over zenoh. The README was stale, describing a placeholder that had since
+been replaced. (`bringup-restructure.md` repeated the claim; corrected there.)
 
-The deleted `control_stack.launch.py` carried the same stale note in its
-docstring, so that copy is gone with it.
+**Update, 2026-09-17:** overtaken by a bigger change — real hardware now
+bypasses ros2_control entirely for locomotion. `base101_control_plugin` is
+deleted, `base101.hardware.xacro` has no `<ros2_control>` block, and the Axon
+2 firmware talks `/cmd_vel`/`/odom` directly (see `HARDWARE.md`). The README
+is up to date again, describing this rather than either the mock or the
+bridge plugin.
 
 ## 6. The robocore engine still points at the stale flagship profile
 

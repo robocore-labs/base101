@@ -4,11 +4,12 @@
   <name>base101_bringup_hw</name>
   <version>0.1.0</version>
   <description>
-    Hardware bringup for base101: one launch that starts the control stack on
-    the real robot (ros2_control over the Axon 2 firmware bridge), plus the
-    autonomy stack. Also owns the RViz-only display launch. The counterpart of
-    base101_bringup_gazebo, sharing its argument contract so sim and robot are
-    driven the same way.
+    Hardware bringup for base101: one launch that starts robot_state_publisher
+    + twist_mux and the autonomy stack. There is no ros2_control on real
+    hardware — the Axon 2 firmware owns locomotion directly over zenoh
+    (/cmd_vel in, /odom out). Also owns the RViz-only display launch. The
+    counterpart of base101_bringup_gazebo, sharing its argument contract so
+    sim and robot are driven the same way.
   </description>
 
   <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
@@ -16,20 +17,16 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- Model + tuning + the hardware interface -->
+  <!-- Model + tuning -->
   <exec_depend>base101_description</exec_depend>
   <exec_depend>base101_control</exec_depend>
-  <exec_depend>base101_control_plugin</exec_depend>
 
   <!-- Stacks this composes -->
   <exec_depend>base101_slam</exec_depend>
   <exec_depend>base101_nav</exec_depend>
   <exec_depend>robocore_agent</exec_depend>
 
-  <!-- Control runtime -->
-  <exec_depend>controller_manager</exec_depend>
-  <exec_depend>joint_state_broadcaster</exec_depend>
-  <exec_depend>diff_drive_controller</exec_depend>
+  <!-- Runtime -->
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>twist_mux</exec_depend>
   <exec_depend>xacro</exec_depend>

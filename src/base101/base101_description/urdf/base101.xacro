@@ -64,7 +64,9 @@
   </xacro:if>
 
   <!-- simulator=isaac: driven natively from base101_isaac (no ros2_control).
-       simulator=none: real-hw ros2_control comes from base101_control's
-       hardware xacro (base101.hardware.xacro). -->
+       simulator=none: real hardware — no ros2_control block at all. The
+       Axon 2 firmware owns locomotion directly over zenoh (/cmd_vel in,
+       /odom out); base101.hardware.xacro just wraps this with
+       simulator:=none forced. -->
 
 </robot>

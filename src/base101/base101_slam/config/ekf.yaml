@@ -13,19 +13,19 @@ ekf_filter_node:
     base_link_frame: base_link
     world_frame: odom
 
-    # If true, EKF publishes odom -> base_link. base101's diff_drive_controller
-    # publishes that TF by default — to avoid two publishers fighting, either
-    # leave publish_tf=false here OR set enable_odom_tf: false on the controller.
-    publish_tf: false
+    # There is no ros2_control/diff_drive_controller on real hardware — the
+    # Axon 2 firmware publishes /odom directly and nothing else broadcasts
+    # odom -> base_link, so EKF is the sole publisher of that TF.
+    publish_tf: true
     two_d_mode: true
 
     # The filter accepts an arbitrary number of inputs from each input message type
     # (nav_msgs/Odometry, geometry_msgs/PoseWithCovarianceStamped, etc.)
     # To add an input, simply set its topic name and configure the boolean vector
 
-    # Wheel odometry from diff_drive_controller
+    # Wheel odometry, published directly by the Axon 2 firmware over zenoh.
     # Using pose (x, y, yaw) instead of velocities because velocity readings are noisy
-    odom0: /diff_drive_controller/odom
+    odom0: /odom
     odom0_config: [true,  true,  false,  # x, y, z position
                    false, false, true,   # roll, pitch, yaw orientation
                    false, false, false,  # x_dot, y_dot, z_dot velocities

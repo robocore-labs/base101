@@ -2,13 +2,15 @@
 #
 # Input topics are subscribed as plain geometry_msgs/Twist (twist_mux's
 # VelocityTopicHandle is hardcoded to that type). The cmd_vel_out remap (set
-# in the launch) wires the output to /diff_drive_controller/cmd_vel.
+# in the launch) wires the output to the downstream consumer.
 #
-# use_stamped MUST be true on Jazzy: diff_drive_controller's subscription is
-# TwistStamped-only (the old use_stamped_vel toggle was removed). Setting it
-# here makes twist_mux pick its cmd_pub_stamped_ output path so the controller
-# actually receives commands. Leave this on unless you intentionally point
-# twist_mux at a different downstream that takes unstamped Twist.
+# use_stamped:true below is the sim default: diff_drive_controller on Jazzy
+# is TwistStamped-only (the old use_stamped_vel toggle was removed), and
+# sim.launch.py remaps cmd_vel_out to /diff_drive_controller/cmd_vel.
+#
+# base101_bringup_hw overrides use_stamped to false at the Node() level
+# (without editing this file) because there is no diff_drive_controller on
+# real hardware — the Axon 2 firmware subscribes to plain Twist on /cmd_vel.
 twist_mux:
   ros__parameters:
     use_stamped: true

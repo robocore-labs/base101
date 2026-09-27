@@ -11,19 +11,14 @@ The sim-only arguments (`world`, `camera`) are the only difference.
 
 Startup order:
 
-    robot_state_publisher + ros2_control_node + twist_mux   (immediately)
-      -> +3 s: joint_state_broadcaster
-        -> +5 s: diff_drive_controller
-          -> +10 s: slam + nav2
+    robot_state_publisher + twist_mux   (immediately)
+      -> +3 s: slam + nav2
 
-Unlike the sim there is no spawn event to hang the controller chain off —
-ros2_control_node is a plain process, so the spawners are timed. The delays
-are generous on purpose: a spawner that fires before the resource manager has
-claimed the hardware fails outright rather than retrying.
-
-The wheels come up through base101_control_plugin/ROS2ControlBridge, which
-bridges diff_drive_controller's per-wheel velocity interfaces to the Axon 2
-firmware's /motor_manager topics over zenoh. Start the host zenoh router and
+There is no ros2_control on this robot: locomotion bypasses it entirely. The
+Axon 2 firmware owns the DDSM210 wheels directly — it subscribes to /cmd_vel
+and publishes /odom over zenoh — so there is no controller_manager, no
+joint_state_broadcaster/diff_drive_controller spawner chain, and no
+base101_control_plugin bridge to wait on. Start the host zenoh router and
 rmw_zenoh first — see HARDWARE.md.
 
 See docs/bringup-restructure.md.
@@ -97,16 +92,15 @@ def _setup(context, *args, **kwargs):
     rosboard_port = arg('rosboard_port')
 
     if arm:
-        # Deliberately fatal rather than a warning that scrolls past. The
-        # hardware xacro emits a ros2_control block for the four wheel joints
-        # only, and controllers.hw.yaml has no arm section — so arm:=true
-        # would load an arm nothing can drive, and the spawners would fail on
-        # unclaimable interfaces. See docs/findings-open.md.
+        # Deliberately fatal rather than a warning that scrolls past. There is
+        # no ros2_control on hardware at all now (locomotion goes straight to
+        # the Axon 2 firmware), and no arm hardware interface either — so
+        # arm:=true would load an arm nothing can drive. See
+        # docs/findings-open.md.
         raise RuntimeError(
             'arm:=true is not supported on hardware yet: there is no arm '
-            'hardware interface (base101.hardware.xacro covers the wheels '
-            'only) and no arm section in controllers.hw.yaml. The arm is '
-            'sim-only for now — use base101_bringup_gazebo arm:=true.')
+            'hardware interface. The arm is sim-only for now — use '
+            'base101_bringup_gazebo arm:=true.')
 
     pkg_control = get_package_share_directory('base101_control')
 
@@ -121,7 +115,6 @@ def _setup(context, *args, **kwargs):
         value_type=str,
     )
 
-    controllers_cfg = os.path.join(pkg_control, 'config', 'controllers.hw.yaml')
     twist_mux_cfg = os.path.join(pkg_control, 'config', 'twist_mux.yaml')
 
     robot_state_publisher = Node(
@@ -132,22 +125,16 @@ def _setup(context, *args, **kwargs):
                      'use_sim_time': False}],
     )
 
-    ros2_control_node = Node(
-        package='controller_manager',
-        executable='ros2_control_node',
-        output='screen',
-        parameters=[{'robot_description': robot_description,
-                     'use_sim_time': False},
-                    controllers_cfg],
-    )
-
+    # use_stamped:false overrides twist_mux.yaml's default (which targets
+    # diff_drive_controller's TwistStamped-only subscription in sim). The
+    # Axon 2 firmware subscribes to plain geometry_msgs/Twist on /cmd_vel.
     twist_mux = Node(
         package='twist_mux',
         executable='twist_mux',
         name='twist_mux',
         output='screen',
-        parameters=[twist_mux_cfg, {'use_sim_time': False}],
-        remappings=[('cmd_vel_out', '/diff_drive_controller/cmd_vel')],
+        parameters=[twist_mux_cfg, {'use_sim_time': False, 'use_stamped': False}],
+        remappings=[('cmd_vel_out', '/cmd_vel')],
     )
 
     rosboard = Node(
@@ -159,28 +146,18 @@ def _setup(context, *args, **kwargs):
         condition=IfCondition(LaunchConfiguration('rosboard')),
     )
 
-    def spawner(name):
-        return Node(
-            package='controller_manager',
-            executable='spawner',
-            arguments=[name, '--controller-manager', '/controller_manager'],
-            output='screen',
-        )
-
     actions = [
         robot_state_publisher,
-        ros2_control_node,
         twist_mux,
         rosboard,
-        TimerAction(period=3.0, actions=[spawner('joint_state_broadcaster')]),
-        TimerAction(period=5.0, actions=[spawner('diff_drive_controller')]),
     ]
 
     tail = []
     if slam:
         tail.append(_stack('base101_slam', 'slam.launch.py'))
     if nav:
-        tail.append(_stack('base101_nav', 'nav.launch.py', rviz=rviz))
+        tail.append(_stack('base101_nav', 'nav.launch.py', rviz=rviz,
+                            odom_topic='/odom'))
     if agent:
         # The robocore agent — see the equivalent block in sim.launch.py.
         # Started last: it resolves topics and frames at startup against
@@ -196,7 +173,7 @@ def _setup(context, *args, **kwargs):
             parameters=[{'use_sim_time': False}],
         ))
     if tail:
-        actions.append(TimerAction(period=10.0, actions=tail))
+        actions.append(TimerAction(period=3.0, actions=tail))
 
     return actions
 

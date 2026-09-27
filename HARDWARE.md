@@ -1,36 +1,31 @@
 # Running base101 on real hardware
 
 base101's motors, IMU and lidar are driven by the **Axon 2 board (RP2354B)**
-running the [`base101-fw`](../base101-fw) firmware. It is a native ROS 2
-node (Pico-ROS + zenoh-pico, compatible with `rmw_zenoh`): the host talks ROS
-topics, not raw serial. On the host side, `ros2_control` runs the usual
-`diff_drive_controller`, and `base101_control_plugin` bridges its per-wheel
-command/state interfaces to the firmware's motor-manager topics.
+running the [`base101-fw`](../base101-fw) firmware. It is a native ROS 2 node
+(Pico-ROS + zenoh-pico, compatible with `rmw_zenoh`): the host talks ROS
+topics, not raw serial. Locomotion bypasses `ros2_control` entirely on real
+hardware — the firmware subscribes to `/cmd_vel` and publishes `/odom`
+directly, so there is no `diff_drive_controller`/`base101_control_plugin`
+bridge to keep in sync. (This is a host-side change landing ahead of the
+firmware side — see `base101-fw` for status.)
 
 ```
-diff_drive_controller ──▶ base101_control_plugin/ROS2ControlBridge
-                              │  pub /motor_manager/base_cmd   (4× wheel vel, rad/s)
-                              │  sub /motor_manager/joint_states
-                              ▼      ── zenoh ──▶  Axon 2 firmware ──▶ 4× DDSM210
+twist_mux ──▶ /cmd_vel (geometry_msgs/Twist) ── zenoh ──▶ Axon 2 firmware ──▶ 4× DDSM210
+                                                                │
+host (EKF fuses with /imu/data) ◀── zenoh ◀── /odom (nav_msgs/Odometry) ◀──┘
 ```
 
 ## Topic contract (firmware ⇄ host)
 
 | Topic | Type | Dir | Notes |
 |---|---|---|---|
-| `/motor_manager/base_cmd` | `std_msgs/Float64MultiArray` | host→fw | 4 wheel velocities (rad/s), order **[FL, FR, BL, BR]** |
-| `/motor_manager/joint_states` | `sensor_msgs/JointState` | fw→host | wheels in slots 0–3, 50 Hz |
+| `/cmd_vel` | `geometry_msgs/Twist` | host→fw | plain (unstamped) Twist; `twist_mux` output, `use_stamped:false` on hw |
+| `/odom` | `nav_msgs/Odometry` | fw→host | wheel odometry computed by the firmware; frame `odom`→`base_link` |
 | `/imu/data`, `/imu/mag`, `/imu/temperature` | `Imu` / `MagneticField` / `Temperature` | fw→host | BNO055, frame `imu_link`, 50 Hz |
 
-**Joint names + order are a contract** with `base101-fw/src/ros/axon_config.h`:
-
-- names: `front_left_wheel_joint`, `front_right_wheel_joint`,
-  `back_left_wheel_joint`, `back_right_wheel_joint` (used by both the URDF and
-  the firmware's `joint_states`);
-- `base_cmd` index order `[0]=FL [1]=FR [2]=BL [3]=BR` — this is the order the
-  wheel `<joint>`s appear in `base101_control/urdf/base101.hardware.xacro`.
-
-If you change either side, change both.
+Wheel geometry (separation, radius) and per-wheel joint order used to compute
+`/odom` from the DDSM210 encoders now live entirely in the firmware's
+`axon_config.h` — the host carries no copy of them for real hardware.
 
 ## Host one-time setup
 
@@ -62,10 +57,9 @@ ros2 launch base101_bringup_hw robot.launch.py
 ```
 
 This starts `robot_state_publisher` (from `base101.hardware.xacro`, i.e.
-`simulator:=none` + the Axon bridge), the `controller_manager` with
-`controllers.hw.yaml`, the `joint_state_broadcaster` + `diff_drive_controller`,
-a `twist_mux` in front of `/diff_drive_controller/cmd_vel`, and then SLAM +
-Nav2. Add `nav:=false slam:=false` for wheels only.
+`simulator:=none`, no `ros2_control` block), a `twist_mux` in front of
+`/cmd_vel`, and then SLAM + Nav2. Add `nav:=false slam:=false` for wheels
+only.
 
 Drive it:
 ```
@@ -73,10 +67,10 @@ ros2 topic pub /cmd_vel_key geometry_msgs/msg/Twist '{linear: {x: 0.1}}' -r 10
 ```
 
 ### Verify
-- `ros2 control list_hardware_components` → `base101_hw_system` **active**.
-- `ros2 control list_controllers` → `diff_drive_controller` + `joint_state_broadcaster` **active**.
-- `ros2 topic echo /motor_manager/base_cmd` reacts to `cmd_vel`.
-- `ros2 topic echo /joint_states` shows the four wheels turning; `/odom` is published.
+- `ros2 topic echo /cmd_vel` reacts to `/cmd_vel_key` (or nav/agent/joystick)
+  through `twist_mux`.
+- `ros2 topic echo /odom` streams from the firmware once it's connected over
+  zenoh.
 - `ros2 topic echo /imu/data` streams from the BNO055.
 
 ### Wheel direction calibration
@@ -95,11 +89,14 @@ reflash — the host side stays unchanged.
 
 ## Navigation / SLAM
 
-`base101_slam` and `base101_nav` run on top of the base unchanged. When you run
-their EKF (`robot_localization`, fusing wheel odom + `/imu/data`), set
-`diff_drive_controller.enable_odom_tf: false` in `controllers.hw.yaml` so the
-EKF owns the `odom → base_link` transform (otherwise two nodes publish it).
-Standalone driving (no nav) keeps `enable_odom_tf: true`.
+`base101_slam` and `base101_nav` run on top of the base unchanged, except that
+`base101_bringup_hw` points `bt_navigator`/`velocity_smoother` at `/odom`
+instead of sim's `/diff_drive_controller/odom` (see `nav.launch.py`'s
+`odom_topic` argument). EKF (`robot_localization`, fusing `/odom` +
+`/imu/data`) is the only publisher of `odom → base_link` on real hardware —
+there is no controller to fight it, so `ekf.yaml` sets `publish_tf: true`.
+Without SLAM running (`slam:=false`), nothing publishes that TF; the firmware
+still drives fine, you just lose the transform for visualization/nav.
 
 ## Tower / arms
 

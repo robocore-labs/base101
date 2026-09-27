@@ -237,8 +237,7 @@ the folders are purely organisational. Packages parked out of the build live in
 | Package | Type | Purpose |
 |---|---|---|
 | `base101_description` | ament_python | **The robot**: `base101.xacro` (one description, `arm:=` picks the configuration), chassis links/joints, sensors, materials, meshes. *Not launched directly.* |
-| `base101_control` | ament_cmake | Tuning: `controllers.{sim,hw}.yaml`, `twist_mux.yaml`, and the hardware overlay `base101.hardware.xacro`. |
-| `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). |
+| `base101_control` | ament_cmake | Tuning: `controllers.sim.yaml` (sim only), `twist_mux.yaml`, and the hardware overlay `base101.hardware.xacro`. Real hardware has no ros2_control — the Axon firmware owns locomotion directly (`/cmd_vel` in, `/odom` out). |
 | `base101_worlds` | ament_cmake | Sim-common assets: Gazebo worlds, ros↔gz bridge, RViz preset. |
 
 **Stacks** — own their own launch, composed by the bringup packages
@@ -285,8 +284,7 @@ graph TD
 
     subgraph model["model, config, worlds"]
         DESC["base101_description<br/><i>base101.xacro + arm.xacro,<br/>chassis, sensors, meshes</i>"]
-        CTRL["base101_control<br/><i>controllers.{sim,hw}.yaml,<br/>twist_mux, hardware xacro</i>"]
-        PLUGIN["base101_control_plugin<br/><i>ros2_control ↔ Axon bridge</i>"]
+        CTRL["base101_control<br/><i>controllers.sim.yaml,<br/>twist_mux, hardware xacro</i>"]
         GZ["base101_worlds<br/><i>worlds, gz bridge, rviz</i>"]
     end
 
@@ -298,7 +296,6 @@ graph TD
     HW  -.->|composes| SLAM & NAV
 
     DESC -->|arm:=true, inside xacro:if| MOD
-    CTRL -->|hardware xacro| PLUGIN
     DESC -.->|gz plugin loads controllers.sim.yaml| CTRL
 ```
 

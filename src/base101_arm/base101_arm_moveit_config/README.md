@@ -106,7 +106,8 @@ drive the wrist camera through the base cover. Run mod101's generator with
 
 ## Not done
 
-- No `controllers.hw.yaml`; the arm is sim-only on real hardware.
+- No hardware path at all (real hardware has no ros2_control now, for the
+  arm or the wheels); the arm is sim-only on real hardware.
 - No sensor plugin for octomap, so the planning scene has no perceived
   obstacles — self-collision and the static chassis only. Whether that belongs
   here or in a picking layer, and what it would take, is worked through in
