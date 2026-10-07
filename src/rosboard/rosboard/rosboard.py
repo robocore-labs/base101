@@ -2,6 +2,8 @@
 
 import asyncio
 import importlib
+import json
+import math
 import os
 import socket
 import threading
@@ -25,7 +27,7 @@ from rosboard.subscribers.dmesg_subscriber import DMesgSubscriber
 from rosboard.subscribers.processes_subscriber import ProcessesSubscriber
 from rosboard.subscribers.system_stats_subscriber import SystemStatsSubscriber
 from rosboard.subscribers.dummy_subscriber import DummySubscriber
-from rosboard.handlers import ROSBoardSocketHandler, NoCacheStaticFileHandler
+from rosboard.handlers import ROSBoardSocketHandler, NoCacheStaticFileHandler, JointControlConfigHandler
 
 class ROSBoardNode(object):
     instance = None
@@ -34,6 +36,7 @@ class ROSBoardNode(object):
         rospy.init_node(node_name)
         self.port = rospy.get_param("~port", 8888)
         self.title = rospy.get_param("~title", socket.gethostname())
+        self.joint_control_config = json.loads(rospy.get_param("~joint_control_config", "{}"))
 
         # types that the browser is allowed to publish via MSG_PUB. Both Twist
         # variants are accepted by default so the teleop card can match
@@ -103,6 +106,7 @@ class ROSBoardNode(object):
         }
 
         tornado_handlers = [
+                (r"/rosboard/joint-controls", JointControlConfigHandler, {"node": self}),
                 (r"/rosboard/v1", ROSBoardSocketHandler, {
                     "node": self,
                 }),
@@ -438,6 +442,16 @@ class ROSBoardNode(object):
             )
             return
 
+        if norm == "trajectory_msgs/msg/JointTrajectory":
+            group = next((g for g in self.joint_control_config.get("groups", []) if g["topic"] == topic_name), None)
+            if not group or msg_dict.get("joint_names") != [j["name"] for j in group["joints"]]:
+                rospy.logwarn("publish refused: undeclared trajectory controller or joint order")
+                return
+            for point in msg_dict.get("points", []):
+                positions = point.get("positions", [])
+                if len(positions) != len(group["joints"]) or any(not math.isfinite(float(v)) or not j["min"] <= float(v) <= j["max"] for v, j in zip(positions, group["joints"])):
+                    rospy.logwarn("publish refused: joint command outside declared limits")
+                    return
         ros_msg = self._dict_to_ros(norm, msg_dict)
         if ros_msg is None:
             return
@@ -543,6 +557,21 @@ class ROSBoardNode(object):
             ts.twist.angular.y = float(ang.get("y", 0.0) or 0.0)
             ts.twist.angular.z = float(ang.get("z", 0.0) or 0.0)
             return ts
+
+        if norm_type == "trajectory_msgs/msg/JointTrajectory":
+            from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+            trajectory = JointTrajectory()
+            trajectory.joint_names = [str(n) for n in msg_dict.get("joint_names", [])]
+            for data in msg_dict.get("points", []):
+                point = JointTrajectoryPoint()
+                point.positions = [float(v) for v in data.get("positions", [])]
+                if len(point.positions) != len(trajectory.joint_names) or not all(math.isfinite(v) for v in point.positions):
+                    return None
+                duration = data.get("time_from_start", {})
+                point.time_from_start.sec = int(duration.get("sec", 0))
+                point.time_from_start.nanosec = int(duration.get("nanosec", 0))
+                trajectory.points.append(point)
+            return trajectory if trajectory.points else None
 
         if norm_type == "std_msgs/msg/Float64MultiArray":
             from std_msgs.msg import Float64MultiArray

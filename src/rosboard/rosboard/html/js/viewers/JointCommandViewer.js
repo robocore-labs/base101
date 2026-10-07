@@ -68,6 +68,23 @@ class JointCommandViewer extends Viewer {
     this.built = false;
 
     this.syncButton.on('click', () => this._syncFromRobot());
+    this.groupTypes = {}; this.velocities = {}; this.publishTimers = {};
+    this.configReady = false;
+    fetch('/rosboard/joint-controls').then(r => r.json()).then(config => {
+      if (config.groups?.length) {
+        this.groups = {}; this.ranges = {};
+        for (const group of config.groups) {
+          this.groups[group.title] = [group.topic, group.joints.map(j => j.name)];
+          this.groupTypes[group.title] = group.type;
+          for (const joint of group.joints) {
+            this.ranges[joint.name] = [joint.min, joint.max];
+            this.velocities[joint.name] = joint.velocity;
+          }
+        }
+      }
+      this.configReady = true;
+      if (Object.keys(this.live).length) { this._build(); this._syncFromRobot(); }
+    }).catch(() => { this.configReady = true; });
   }
 
   onData(msg) {
@@ -76,6 +93,7 @@ class JointCommandViewer extends Viewer {
     for(let i = 0; i < msg.name.length; i++) {
       this.live[msg.name[i]] = msg.position[i];
     }
+    if(!this.configReady) return;
     if(!this.built) {
       this._build();
       if(this.built) this._syncFromRobot();
@@ -93,7 +111,7 @@ class JointCommandViewer extends Viewer {
     let any = false;
     for(let title in this.groups) {
       let [topic, joints] = this.groups[title];
-      if(!joints.some(j => j in this.live)) continue;  // hardware not loaded
+      if(!joints.every(j => j in this.live)) continue;  // hardware not loaded
       any = true;
 
       $('<div></div>').css({
@@ -121,7 +139,7 @@ class JointCommandViewer extends Viewer {
     }).text(joint).appendTo(row);
 
     let input = $('<input type="range">')
-      .attr({min: lo, max: hi, step: 0.01, value: 0})
+      .attr({min: lo, max: hi, step: joint.includes("lift") ? 0.001 : 0.01, value: 0, "data-joint":joint, "aria-label":joint})
       .css({"flex": "1", "min-width": "80px"})
       .appendTo(row);
 
@@ -138,7 +156,8 @@ class JointCommandViewer extends Viewer {
     input.on('input', () => {
       this.values[joint] = Number(input.val());
       cmdLabel.text(this.values[joint].toFixed(2));
-      this._publishGroup(group);
+      clearTimeout(this.publishTimers[group]);
+      this.publishTimers[group] = setTimeout(() => this._publishGroup(group), 120);
     });
 
     this.sliders[joint] = {input: input, cmdLabel: cmdLabel, liveLabel: liveLabel};
@@ -148,15 +167,26 @@ class JointCommandViewer extends Viewer {
   _syncFromRobot() {
     for(let j in this.sliders) {
       if(!(j in this.live)) continue;
-      this.values[j] = this.live[j];
-      this.sliders[j].input.val(this.live[j]);
-      this.sliders[j].cmdLabel.text(this.live[j].toFixed(2));
+      const [lo, hi] = this.ranges[j] || [-3.14, 3.14];
+      this.values[j] = Math.max(lo, Math.min(hi, this.live[j]));
+      this.sliders[j].input.val(this.values[j]);
+      this.sliders[j].cmdLabel.text(this.values[j].toFixed(2));
     }
   }
 
   _publishGroup(title) {
     if(typeof currentTransport === 'undefined' || !currentTransport || !currentTransport.publish) return;
     let [topic, joints] = this.groups[title];
+    if (this.groupTypes[title] === "trajectory_msgs/msg/JointTrajectory") {
+      const positions = joints.map(j => this.values[j] ?? this.live[j]);
+      const duration = Math.max(0.4, ...joints.map((j, i) =>
+        1.5 * Math.abs(positions[i] - (this.live[j] ?? positions[i])) / (this.velocities[j] || 0.5)));
+      const seconds = Math.floor(duration);
+      currentTransport.publish({topicName:topic, topicType:this.groupTypes[title], msg:{
+        joint_names:joints, points:[{positions, time_from_start:{sec:seconds, nanosec:Math.round((duration-seconds)*1e9)}}]
+      }});
+      return;
+    }
     currentTransport.publish({
       topicName: topic,
       topicType: "std_msgs/msg/Float64MultiArray",
@@ -165,7 +195,7 @@ class JointCommandViewer extends Viewer {
   }
 }
 
-JointCommandViewer.friendlyName = "Joint sliders (position command)";
+JointCommandViewer.friendlyName = "Joint sliders (robot controllers)";
 // Not auto-selected for JointState topics — JointStateViewer remains the
 // default; this card is constructed explicitly from the System nav entry.
 JointCommandViewer.supportedTypes = [];

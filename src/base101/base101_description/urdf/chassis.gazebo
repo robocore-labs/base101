@@ -20,7 +20,7 @@
 <xacro:property name="camera_hfov" value="${1.518 if '$(arg camera)' == 'realsense' else 1.204}" />
 
 <!-- Mirrors the URDF palette in materials.xacro; keep the two in step. -->
-<xacro:property name="extrusion_color"   value="Gazebo/DarkGrey" />
+<xacro:property name="extrusion_color"   value="Gazebo/White" />
 <xacro:property name="plate_color"       value="Gazebo/Grey" />
 <xacro:property name="plastic_color"     value="Gazebo/Black" />
 <xacro:property name="hardware_color"    value="Gazebo/Silver" />
@@ -292,6 +292,7 @@
 </gazebo>
 
 <!-- ============================ payload deck ============================ -->
+<xacro:if value="$(arg upper_deck)">
 <gazebo reference="standoff_front_left_1">
   <material>${hardware_color}</material>
   <mu1>0.2</mu1>
@@ -322,6 +323,7 @@
   <mu2>0.2</mu2>
   <self_collide>false</self_collide>
 </gazebo>
+</xacro:if>
 
 <!-- ========================= mounts / accessories ========================= -->
 <gazebo reference="lidar_mount_1">

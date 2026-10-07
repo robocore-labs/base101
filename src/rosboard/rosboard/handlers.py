@@ -1,4 +1,5 @@
 import json
+import math
 import socket
 import time
 import tornado
@@ -10,10 +11,27 @@ import uuid
 
 from . import __version__
 
+def json_safe(value):
+    """Represent unavailable ROS float measurements as JSON null, not NaN/Infinity."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    return value
+
 class NoCacheStaticFileHandler(tornado.web.StaticFileHandler):
     def set_extra_headers(self, path):
         # Disable cache
         self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+
+class JointControlConfigHandler(tornado.web.RequestHandler):
+    def initialize(self, node):
+        self.node = node
+    def get(self):
+        self.set_header('Cache-Control', 'no-store')
+        self.write(self.node.joint_control_config)
 
 class ROSBoardSocketHandler(tornado.websocket.WebSocketHandler):
     sockets = set()
@@ -87,7 +105,7 @@ class ROSBoardSocketHandler(tornado.websocket.WebSocketHandler):
 
         try:
             if message[0] == ROSBoardSocketHandler.MSG_TOPICS:
-                json_msg = json.dumps(message, separators=(',', ':'))
+                json_msg = json.dumps(json_safe(message), separators=(',', ':'), allow_nan=False)
                 for socket in cls.sockets:
                     if socket.ws_connection and not socket.ws_connection.is_closing():
                         socket.write_message(json_msg)
@@ -105,7 +123,7 @@ class ROSBoardSocketHandler(tornado.websocket.WebSocketHandler):
                         continue
                     if socket.ws_connection and not socket.ws_connection.is_closing():
                         if json_msg is None:
-                            json_msg = json.dumps(message, separators=(',', ':'))
+                            json_msg = json.dumps(json_safe(message), separators=(',', ':'), allow_nan=False)
                         socket.write_message(json_msg)
                     socket.last_data_times_by_topic[topic_name] = t
         except Exception as e:

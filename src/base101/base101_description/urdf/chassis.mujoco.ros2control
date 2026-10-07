@@ -4,31 +4,13 @@
   <!-- ros2_control hardware interface for MuJoCo. The MujocoSystem plugin
        (from mujoco_ros2_control) ties each named joint to the mjData qvel
        slot of the same name in base101_mujoco/scenes/base101_<variant>.xml. -->
+  <xacro:include filename="$(find base101_description)/urdf/wheel_interfaces.xacro"/>
   <ros2_control name="base101_mujoco_system" type="system">
     <hardware>
       <plugin>mujoco_ros2_control/MujocoSystem</plugin>
     </hardware>
 
-    <joint name="front_left_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-    <joint name="front_right_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-    <joint name="back_left_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-    <joint name="back_right_wheel_joint">
-      <command_interface name="velocity"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
+    <xacro:base101_wheel_interfaces/>
   </ros2_control>
 
 </robot>
