@@ -14,14 +14,14 @@ class JointStateViewer extends Viewer {
     // Position plot
     this.positionLabel = $('<div></div>')
       .css({'font-size': '10px', 'color': '#a0a0a0', 'margin-bottom': '4px'})
-      .text('Position (rad)')
+      .text('Position (rad or m)')
       .appendTo(this.viewerNode);
     this.positionPlotNode = $('<div></div>').appendTo(this.viewerNode);
 
     // Velocity plot
     this.velocityLabel = $('<div></div>')
       .css({'font-size': '10px', 'color': '#a0a0a0', 'margin-top': '8px', 'margin-bottom': '4px'})
-      .text('Velocity (rad/s)')
+      .text('Velocity (rad/s or m/s)')
       .appendTo(this.viewerNode);
     this.velocityPlotNode = $('<div></div>').appendTo(this.viewerNode);
 
@@ -188,34 +188,33 @@ class JointStateViewer extends Viewer {
         .appendTo(nameCell);
 
       // Position
-      const pos = positions[i] !== undefined ? positions[i] : 0;
-      const posDeg = (pos * 180 / Math.PI).toFixed(1);
+      const pos = positions[i];
       $('<td></td>')
         .addClass('monospace')
         .css({'padding': '4px 8px', 'font-size': '10px'})
-        .text(`${pos.toFixed(3)} (${posDeg}°)`)
+        .text(Number.isFinite(pos) ? pos.toFixed(3) : '—')
         .appendTo(tr);
 
       // Velocity
-      const vel = velocities[i] !== undefined ? velocities[i] : 0;
+      const vel = velocities[i];
       $('<td></td>')
         .addClass('monospace')
         .css({'padding': '4px 8px', 'font-size': '10px'})
-        .text(vel.toFixed(3))
+        .text(Number.isFinite(vel) ? vel.toFixed(3) : '—')
         .appendTo(tr);
 
       // Effort
-      const eff = efforts[i] !== undefined ? efforts[i] : 0;
+      const eff = efforts[i];
       $('<td></td>')
         .addClass('monospace')
         .css({'padding': '4px 8px', 'font-size': '10px'})
-        .text(eff.toFixed(2))
+        .text(Number.isFinite(eff) ? eff.toFixed(2) : '—')
         .appendTo(tr);
     }
   }
 
   onData(msg) {
-    this.card.title.text(_rabo_topic_names[msg._topic_name] || msg._topic_name);
+    this.card.title.text(msg._topic_name);
 
     const names = msg.name || [];
     const positions = msg.position || [];
@@ -248,8 +247,8 @@ class JointStateViewer extends Viewer {
     this.velocityData[0][this.ptr] = time;
 
     for (let i = 0; i < names.length; i++) {
-      this.positionData[i + 1][this.ptr] = positions[i] !== undefined ? positions[i] : 0;
-      this.velocityData[i + 1][this.ptr] = velocities[i] !== undefined ? velocities[i] : 0;
+      this.positionData[i + 1][this.ptr] = Number.isFinite(positions[i]) ? positions[i] : null;
+      this.velocityData[i + 1][this.ptr] = Number.isFinite(velocities[i]) ? velocities[i] : null;
     }
 
     this.ptr = (this.ptr + 1) % this.size;

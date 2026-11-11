@@ -5,9 +5,9 @@
        what it is made of. Gazebo equivalents are in chassis.gazebo and must be
        kept in step. -->
 
-  <!-- 60x20 extrusion, black anodized: reads dark grey under light. -->
+  <!-- 60x20 aluminum extrusion, natural silver finish. -->
   <material name="extrusion_grey">
-    <color rgba="0.220 0.225 0.235 1.0"/>
+    <color rgba="0.770 0.780 0.790 1.0"/>
   </material>
 
   <!-- 3 mm CNC aluminium: the base deck and the payload plate. -->

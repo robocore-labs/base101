@@ -19,6 +19,8 @@
      fitted, the stable frames are camera_link / camera_optical_frame. -->
 
 <xacro:arg name="camera" default="realsense"/>
+<!-- The lift overlay replaces this raised payload deck. -->
+<xacro:arg name="upper_deck" default="true"/>
 
 <!-- ================================= frame =================================
      Two 60x20 extrusion rails plus front/back cross members, with the
@@ -602,11 +604,13 @@
      point every add-on variant (arm, tower) parents to: renaming it
      or moving it ripples into those packages. -->
 
+<xacro:if value="$(arg upper_deck)">
 <link name="standoff_front_left_1">
   <inertial>
     <origin xyz="0 0 0.0225" rpy="0 0 0"/>
     <mass value="0.00998792"/>
-    <inertia ixx="2e-06" iyy="2e-06" izz="0" ixy="0" iyz="0" ixz="0"/>
+    <!-- Cylinder approximation from mass and collision radius/length; retain finite axial inertia. -->
+    <inertia ixx="1.70786859767e-06" iyy="1.70786859767e-06" izz="4.48141953377e-08" ixy="0" iyz="0" ixz="0"/>
   </inertial>
   <visual>
     <origin xyz="-0.08 -0.11 -0.003" rpy="0 0 0"/>
@@ -627,7 +631,8 @@
   <inertial>
     <origin xyz="0 0 0.0225" rpy="0 0 0"/>
     <mass value="0.00998792"/>
-    <inertia ixx="2e-06" iyy="2e-06" izz="0" ixy="0" iyz="0" ixz="0"/>
+    <!-- Cylinder approximation from mass and collision radius/length; retain finite axial inertia. -->
+    <inertia ixx="1.70786859767e-06" iyy="1.70786859767e-06" izz="4.48141953377e-08" ixy="0" iyz="0" ixz="0"/>
   </inertial>
   <visual>
     <origin xyz="-0.08 0.11 -0.003" rpy="0 0 0"/>
@@ -648,7 +653,8 @@
   <inertial>
     <origin xyz="0 0 0.0225" rpy="0 0 0"/>
     <mass value="0.00998792"/>
-    <inertia ixx="2e-06" iyy="2e-06" izz="0" ixy="0" iyz="0" ixz="0"/>
+    <!-- Cylinder approximation from mass and collision radius/length; retain finite axial inertia. -->
+    <inertia ixx="1.70786859767e-06" iyy="1.70786859767e-06" izz="4.48141953377e-08" ixy="0" iyz="0" ixz="0"/>
   </inertial>
   <visual>
     <origin xyz="0.08 -0.11 -0.003" rpy="0 0 0"/>
@@ -669,7 +675,8 @@
   <inertial>
     <origin xyz="0 0 0.0225" rpy="0 0 0"/>
     <mass value="0.00998792"/>
-    <inertia ixx="2e-06" iyy="2e-06" izz="0" ixy="0" iyz="0" ixz="0"/>
+    <!-- Cylinder approximation from mass and collision radius/length; retain finite axial inertia. -->
+    <inertia ixx="1.70786859767e-06" iyy="1.70786859767e-06" izz="4.48141953377e-08" ixy="0" iyz="0" ixz="0"/>
   </inertial>
   <visual>
     <origin xyz="0.08 0.11 -0.003" rpy="0 0 0"/>
@@ -736,6 +743,8 @@
   <parent link="standoff_back_right_1"/>
   <child link="top_plate_1"/>
 </joint>
+
+</xacro:if>
 
 <!-- ================================= lidar =================================
      RPLidar C1. lidar_frame is the scan origin: the rotor axis, at the
