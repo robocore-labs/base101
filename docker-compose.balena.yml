@@ -1,0 +1,40 @@
+version: '2.4'
+services:
+  zenoh-router:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.zenoh
+    privileged: true
+    network_mode: host
+    restart: 'no'
+    environment:
+      BASE101_ENABLE_HARDWARE: 'false'
+  bringup:
+    build: {context: ., dockerfile: docker/Dockerfile.hardware}
+    privileged: true
+    network_mode: host
+    restart: 'no'
+    environment:
+      BASE101_ENABLE_HARDWARE: 'false'
+    command: [base101-hardware-service, bringup]
+  camera:
+    build: {context: ., dockerfile: docker/Dockerfile.hardware}
+    privileged: true
+    network_mode: host
+    restart: 'no'
+    environment:
+      BASE101_ENABLE_CAMERA: 'false'
+    command: [base101-hardware-service, camera]
+  navigation:
+    build: {context: ., dockerfile: docker/Dockerfile.hardware}
+    network_mode: host
+    restart: 'no'
+    environment:
+      BASE101_ENABLE_MAPPING: 'false'
+      BASE101_ENABLE_NAVIGATION: 'false'
+    command: [base101-hardware-service, navigation]
+  visualiser:
+    build: {context: ., dockerfile: docker/Dockerfile.hardware}
+    network_mode: host
+    restart: 'no'
+    command: [base101-hardware-service, visualiser]

@@ -1,0 +1,48 @@
+name: base101
+id: base101-sim
+tagline: "MuJoCo \xB7 lidar mapping \xB7 differential drive"
+cameras:
+- topic: /base_camera/image_raw
+  label: Base RGB
+- topic: /base_camera/depth_image
+  label: Base depth
+maps:
+- topic: /map
+  label: SLAM
+frames:
+  fixed: map
+  robot: base_link
+topics:
+  joints: /joint_states
+  odom: /odom
+  pose: ''
+  plan: /plan
+drive:
+  topic: /cmd_vel_joy
+  type: geometry_msgs/msg/TwistStamped
+  linear_max: 0.5
+  angular_max: 1.5
+telemetry:
+- section: hardware
+  kind: joints
+  title: Joint feedback
+  topic: /joint_states
+- section: navigation
+  kind: odometry
+  title: Fused odometry
+  topic: /odom
+- section: hardware
+  kind: lidar
+  title: Lidar
+  topic: /scan_filtered
+- section: hardware
+  kind: compute
+  title: Compute
+  topic: _system_stats
+- section: hardware
+  kind: odometry
+  title: Wheel odometry (diagnostic)
+  topic: /diff_drive_controller/odom
+navigation:
+  action: /navigate_to_pose
+  frame: map

@@ -44,7 +44,7 @@ def _setup(context, *args, **kwargs):
 
     nodes = []
 
-    if use_sim_time:
+    if use_sim_time and LaunchConfiguration('ekf').perform(context) == 'true':
         # Supplementary only — sim's diff_drive_controller already publishes
         # odom -> base_link itself, so ekf.sim.yaml sets publish_tf:false.
         # See the module docstring for hardware's (different, unconditional)
@@ -99,6 +99,7 @@ def _setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument('ekf', default_value='true', description='Launch supplementary simulation EKF'),
         DeclareLaunchArgument(
             'use_sim_time',
             default_value='false',

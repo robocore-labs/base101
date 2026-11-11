@@ -1,0 +1,17 @@
+name: base101 Hardware
+id: base101-hardware
+tagline: Live Link101 · lidar · RealSense
+cameras:
+  - {topic: /camera/color/image_raw, label: Base RGB}
+  - {topic: /camera/aligned_depth_to_color/image_raw, label: Base depth}
+maps:
+  - {topic: /map, label: SLAM}
+frames: {fixed: map, robot: base_link}
+topics: {joints: /joint_states, odom: /odom, pose: '', plan: /plan}
+drive: {topic: /cmd_vel_joy, type: geometry_msgs/msg/TwistStamped, linear_max: 0.3, angular_max: 0.6}
+joint_groups: []
+telemetry:
+  - {section: hardware, kind: odometry, title: Fused odometry, topic: /odom}
+  - {section: hardware, kind: lidar, title: Lidar, topic: /scan_filtered}
+  - {section: hardware, kind: imu, title: IMU, topic: /link101/imu}
+  - {section: hardware, kind: compute, title: Compute, topic: _system_stats}

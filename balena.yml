@@ -1,0 +1,15 @@
+name: base101
+type: sw.application
+version: 0.2.0
+description: base101 Link101 hardware, RealSense, lidar SLAM and Nav2
+assets:
+  repository:
+    type: blob.asset
+    data:
+      url: https://github.com/robocore-labs/base101
+data:
+  applicationEnvironmentVariables:
+    - BASE101_ENABLE_HARDWARE: 'false'
+    - BASE101_ENABLE_CAMERA: 'false'
+    - BASE101_ENABLE_MAPPING: 'false'
+    - BASE101_ENABLE_NAVIGATION: 'false'

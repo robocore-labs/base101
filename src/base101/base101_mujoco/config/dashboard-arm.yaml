@@ -1,0 +1,65 @@
+name: base101
+id: base101-arm-sim
+tagline: "MuJoCo \xB7 lidar mapping \xB7 differential drive"
+cameras:
+- topic: /base_camera/image_raw
+  label: Base RGB
+- topic: /base_camera/depth_image
+  label: Base depth
+- topic: /arm_wrist_camera/image_raw
+  label: Wrist RGB
+maps:
+- topic: /map
+  label: SLAM
+frames:
+  fixed: map
+  robot: base_link
+topics:
+  joints: /joint_states
+  odom: /odom
+  pose: ''
+  plan: /plan
+drive:
+  topic: /cmd_vel_joy
+  type: geometry_msgs/msg/TwistStamped
+  linear_max: 0.5
+  angular_max: 1.5
+telemetry:
+- section: hardware
+  kind: joints
+  title: Joint feedback
+  topic: /joint_states
+- section: navigation
+  kind: odometry
+  title: Fused odometry
+  topic: /odom
+- section: hardware
+  kind: lidar
+  title: Lidar
+  topic: /scan_filtered
+- section: hardware
+  kind: compute
+  title: Compute
+  topic: _system_stats
+- section: hardware
+  kind: odometry
+  title: Wheel odometry (diagnostic)
+  topic: /diff_drive_controller/odom
+joint_groups:
+- title: Arm
+  topic: /arm_trajectory_controller/follow_joint_trajectory
+  type: control_msgs/action/FollowJointTrajectory
+  joints:
+  - arm_joint_base
+  - arm_joint_shoulder
+  - arm_joint_elbow
+  - arm_joint_wrist_tilt
+  - arm_joint_wrist_roll
+- title: Gripper
+  topic: /gripper_trajectory_controller/follow_joint_trajectory
+  type: control_msgs/action/FollowJointTrajectory
+  joints:
+  - arm_6
+navigation:
+  action: /navigate_to_pose
+  frame: map

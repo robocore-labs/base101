@@ -1,0 +1,25 @@
+name: base101
+services:
+  ros-dev:
+    image: base101:jazzy
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sim
+    init: true
+    tty: true
+    ports:
+    - 127.0.0.1:8890:8888
+    environment:
+      ROS_DOMAIN_ID: '187'
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      MUJOCO_GL: egl
+      EGL_PLATFORM: surfaceless
+    volumes:
+    - .:/workspace/base101
+    - base101-build:/workspace/base101/build
+    - base101-install:/workspace/base101/install
+    - base101-log:/workspace/base101/log
+volumes:
+  base101-build: null
+  base101-install: null
+  base101-log: null

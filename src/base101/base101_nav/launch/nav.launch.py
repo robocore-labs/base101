@@ -22,6 +22,8 @@ rviz.launch.py is still there if you want RViz without the stack.
 """
 
 import os
+import tempfile
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -44,6 +46,22 @@ def _setup(context, *args, **kwargs):
     variant = 'sim' if use_sim_time else 'hw'
     for name in ('controller', 'bt_navigator', 'velocity_smoother'):
         config[name] = os.path.join(pkg_dir, 'config', f'{name}.{variant}.yaml')
+    # Costmaps are child nodes: parent-node overrides do not replace their
+    # explicit use_sim_time settings in costmap.yaml. Rewrite every occurrence.
+    def clocks(value):
+        if isinstance(value, dict):
+            return {k: use_sim_time if k == 'use_sim_time' else clocks(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [clocks(v) for v in value]
+        if use_sim_time and value == '/diff_drive_controller/odom':
+            return '/odom'
+        return value
+    for key, filename in list(config.items()):
+        with open(filename) as source:
+            params = clocks(yaml.safe_load(source))
+        with tempfile.NamedTemporaryFile(mode='w', prefix='base101-nav-', suffix='.yaml', delete=False) as target:
+            yaml.safe_dump(params, target)
+            config[key] = target.name
     bt_dir = os.path.join(pkg_dir, 'behavior_trees')
 
     planner_server = Node(

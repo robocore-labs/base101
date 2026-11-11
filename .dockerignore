@@ -1,0 +1,12 @@
+.git
+.pixi
+build
+install
+log
+.runtime
+.forge
+attic
+.env
+.env.*
+**/__pycache__
+**/*.pyc

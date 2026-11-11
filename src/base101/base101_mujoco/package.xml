@@ -1,0 +1,8 @@
+<package format="3"><name>base101_mujoco</name><version>0.1.0</version>
+<description>Single-owner MuJoCo simulation with native multiROS viewing.</description>
+<maintainer email="cristidragomir97@gmail.com">Cristi Dragomir</maintainer><license>Apache-2.0</license>
+<buildtool_depend>ament_python</buildtool_depend><exec_depend>rclpy</exec_depend><exec_depend>xacro</exec_depend>
+<exec_depend>base101_description</exec_depend><exec_depend>base101_control</exec_depend>
+<exec_depend>base101_sim_control</exec_depend><exec_depend>controller_manager</exec_depend>
+<exec_depend>robot_state_publisher</exec_depend><exec_depend>sensor_msgs</exec_depend><exec_depend>rosgraph_msgs</exec_depend>
+<exec_depend>launch_ros</exec_depend><export><build_type>ament_python</build_type></export></package>

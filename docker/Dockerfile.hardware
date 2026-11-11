@@ -1,0 +1,25 @@
+FROM ros:jazzy-ros-base
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN apt-get update && apt-get install -y --no-install-recommends \
+ build-essential cmake python3-colcon-common-extensions python3-yaml python3-tornado python3-pil python3-psutil python3-opencv \
+ ros-jazzy-rmw-zenoh-cpp ros-jazzy-xacro ros-jazzy-robot-state-publisher \
+ ros-jazzy-ros2-control ros-jazzy-ros2-controllers ros-jazzy-twist-mux ros-jazzy-robot-localization \
+ ros-jazzy-laser-filters ros-jazzy-rplidar-ros ros-jazzy-realsense2-camera \
+ ros-jazzy-slam-toolbox ros-jazzy-navigation2 \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/base101_ws
+COPY src src
+COPY dependencies/mod101/src/mod101_description dependencies/mod101_description
+COPY dependencies/mod101/src/mod101_tool_parallel dependencies/mod101_tool_parallel
+COPY dependencies/mod101/src/mod101_tool_pincopen dependencies/mod101_tool_pincopen
+COPY dependencies/mod101/src/mod101_tool_jaws dependencies/mod101_tool_jaws
+COPY dependencies/mod101/src/mod101_tool_none dependencies/mod101_tool_none
+RUN source /opt/ros/jazzy/setup.bash && colcon build --merge-install --parallel-workers 2 --packages-select base101_description base101_control base101_control_plugin base101_time base101_bringup_hw base101_camera base101_lidar base101_slam base101_nav robocore_viz mod101_description mod101_tool_parallel mod101_tool_pincopen mod101_tool_jaws mod101_tool_none --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3 -DBUILD_TESTING=OFF
+COPY docker/entrypoint.hardware.sh /usr/local/bin/base101-hardware-entrypoint
+COPY docker/start.hardware.sh /usr/local/bin/base101-hardware-service
+COPY docker/zenoh-session.json5 /etc/base101/session.json5
+COPY docker/hardware-dashboard.yaml /etc/base101/dashboard.yaml
+RUN chmod +x /usr/local/bin/base101-hardware-entrypoint /usr/local/bin/base101-hardware-service
+ENV ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_zenoh_cpp ZENOH_SESSION_CONFIG_URI=/etc/base101/session.json5
+ENTRYPOINT ["/usr/local/bin/base101-hardware-entrypoint"]
+CMD ["base101-hardware-service", "bringup"]

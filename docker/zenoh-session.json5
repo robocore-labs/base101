@@ -1,0 +1,25 @@
+{
+  // rmw_zenoh node-session config for the Axon ROS sidecar.
+  //
+  // Connect to the serial-enabled router (the `zenoh-axon` service) as a
+  // CLIENT — the router owns the board's serial link and does all routing /
+  // discovery, so a single client session is all each ROS node needs. Both
+  // containers use host networking, so the router is reachable on localhost.
+  //
+  // Unspecified fields fall back to zenoh defaults (partial config is allowed).
+  mode: "client",
+
+  connect: {
+    endpoints: ["tcp/localhost:7447"],
+  },
+
+  transport: {
+    // Disable POSIX shared memory. It is just a same-host optimization (our
+    // traffic goes over tcp/serial to the router), and rmw_zenoh's default SHM
+    // provider fails to allocate in a container ("Unable to create POSIX shm
+    // segment: OS error 12 / Failed to create POSIX SHM provider").
+    shared_memory: {
+      enabled: false,
+    },
+  },
+}

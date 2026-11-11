@@ -1,0 +1,6 @@
+[submodule "tools/multiros"]
+	path = tools/multiros
+	url = https://github.com/ringfour/multiROS.git
+[submodule "dependencies/mod101"]
+	path = dependencies/mod101
+	url = https://github.com/robocore-labs/mod101.git

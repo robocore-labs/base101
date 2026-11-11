@@ -1,0 +1,6 @@
+services:
+  ros-dev:
+    image: base101:jazzy-lighter
+    build:
+      args:
+        ROS_RENDERING_IMAGE: multiros:jazzy-lighter

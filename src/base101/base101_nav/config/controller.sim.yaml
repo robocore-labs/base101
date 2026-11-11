@@ -31,9 +31,9 @@ controller_server:
     # never trips it. PoseProgressChecker tracks pose delta (xy AND yaw).
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.5
-      required_movement_angle: 0.5      # ~28 deg
-      movement_time_allowance: 10.0
+      required_movement_radius: 0.05
+      required_movement_angle: 0.25     # ~14 deg
+      movement_time_allowance: 20.0
 
     general_goal_checker:
       stateful: True

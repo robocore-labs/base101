@@ -1,0 +1,27 @@
+ARG ROS_RENDERING_IMAGE=multiros:jazzy-rendering
+FROM ${ROS_RENDERING_IMAGE}
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN apt-get update && apt-get install -y --no-install-recommends \
+ python3-colcon-common-extensions python3-venv python3-tornado python3-pil python3-psutil python3-opencv python3-yaml \
+ ros-jazzy-ros2-control ros-jazzy-ros2-controllers ros-jazzy-diff-drive-controller \
+ ros-jazzy-xacro ros-jazzy-robot-state-publisher ros-jazzy-rmw-cyclonedds-cpp \
+ ros-jazzy-twist-mux ros-jazzy-laser-filters ros-jazzy-robot-localization \
+ ros-jazzy-slam-toolbox ros-jazzy-navigation2 ros-jazzy-teleop-twist-keyboard \
+ && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv --system-site-packages /opt/base101-python \
+ && /opt/base101-python/bin/pip install --no-cache-dir numpy==1.26.4 mujoco==3.13.0
+ENV PYTHONPATH=/opt/base101-python/lib/python3.12/site-packages
+WORKDIR /opt/base101_ws
+COPY src src
+COPY dependencies/mod101/src/mod101_description dependencies/mod101_description
+COPY dependencies/mod101/src/mod101_tool_parallel dependencies/mod101_tool_parallel
+COPY dependencies/mod101/src/mod101_tool_pincopen dependencies/mod101_tool_pincopen
+COPY dependencies/mod101/src/mod101_tool_jaws dependencies/mod101_tool_jaws
+COPY dependencies/mod101/src/mod101_tool_none dependencies/mod101_tool_none
+RUN source /opt/ros/jazzy/setup.bash && colcon build --merge-install --parallel-workers 2 --packages-select base101_description base101_control base101_sim_control base101_mujoco base101_lidar base101_nav base101_slam robocore_viz mod101_description mod101_tool_parallel mod101_tool_pincopen mod101_tool_jaws mod101_tool_none --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3 -DBUILD_TESTING=OFF
+COPY docker/entrypoint.sh /usr/local/bin/base101-entrypoint
+RUN chmod +x /usr/local/bin/base101-entrypoint
+ENV ROS_DOMAIN_ID=187 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp MUJOCO_GL=egl EGL_PLATFORM=surfaceless
+WORKDIR /workspace/base101
+ENTRYPOINT ["/usr/local/bin/base101-entrypoint"]
+CMD ["sleep", "infinity"]

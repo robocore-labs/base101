@@ -1,0 +1,5 @@
+<library path="base101_sim_system">
+  <class name="base101_sim_control/SimulatorSystem" type="base101_sim_control::SimulatorSystem" base_class_type="hardware_interface::SystemInterface">
+    <description>Shared-memory joint I/O for the single base101 MuJoCo physics owner.</description>
+  </class>
+</library>

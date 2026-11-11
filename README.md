@@ -36,6 +36,14 @@ code?** Start with [Getting started](#getting-started).
 
 ---
 
+## Current runtime
+
+Use [PIXI.md](PIXI.md) for the current Pixi/multiROS container setup, native macOS viewer and hardware deployment commands. `pixi run sim arm` starts the MuJoCo simulation and native viewer; the dashboard is at http://localhost:8890.
+
+Web arm/base control and live mapping are verified. Standalone Nav2 goal completion remains unresolved; see [simulation follow-up](docs/SIMULATION-FOLLOWUP.md). RoboCore SDK owns higher-level smoothing and recovery. Hardware deployment is the next validation step.
+
+The older setup sections below describe previous native/Forge workflows and are retained for reference; use PIXI.md for current commands.
+
 ## Getting started
 
 You'll need ROS 2 Jazzy on Ubuntu 24.04. Everything else (Gazebo Harmonic,
