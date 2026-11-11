@@ -11,10 +11,10 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 STAGE = ROOT / '.runtime/balena'
 # Explicit allowlist: never upload native installs, simulation worlds, .env or .git.
-DIRECTORIES = ('src/base101', 'src/robocore_viz', 'dependencies/mod101/src')
-FILES = ('balena.yml', 'docker/Dockerfile.hardware', 'docker/Dockerfile.zenoh',
+DIRECTORIES = ('src/base101', 'src/robocore_viz', 'dependencies/mod101/src', 'dependencies/rplidar_ros')
+FILES = ('docker/Dockerfile.agent', 'docker/agent-profile.yaml', 'balena.yml', 'docker/Dockerfile.hardware', 'docker/Dockerfile.zenoh',
          'docker/entrypoint.hardware.sh', 'docker/start.hardware.sh',
-         'docker/start.zenoh.sh', 'docker/zenoh-session.json5',
+         'docker/start.zenoh.sh', 'docker/serial-path.sh', 'docker/zenoh-session.json5',
          'docker/hardware-dashboard.yaml')
 
 

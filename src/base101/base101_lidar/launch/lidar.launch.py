@@ -42,6 +42,7 @@ def generate_launch_description():
             'frame_id': frame_id,
             'inverted': False,
             'angle_compensate': True,
+            'scan_mode': 'Standard',
         }],
         # Filtered downstream, not the raw driver output — see module docstring.
         remappings=[('scan', '/scan_raw')],

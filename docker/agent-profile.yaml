@@ -1,0 +1,14 @@
+# Observation-first hardware profile. Add motion after live commissioning.
+name: base101
+model: base101 hardware, no arm
+version: "1"
+protocol: 1
+frames: {map: map, odom: odom, base: base_link}
+cameras:
+  base:
+    rgb: /camera/color/image_raw
+    info: /camera/color/camera_info
+    frame: camera_color_optical_frame
+    optical: true
+lidar: {scan: /scan_filtered}
+imu: {topic: /link101/imu}

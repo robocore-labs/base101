@@ -238,6 +238,7 @@ def _setup(context, *args, **kwargs):
                 'frame_id': arg('lidar_frame_id'),
                 'inverted': False,
                 'angle_compensate': True,
+                'scan_mode': 'Standard',
             }],
             remappings=[('scan', '/scan_raw')],
         ))

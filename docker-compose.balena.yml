@@ -6,29 +6,32 @@ services:
       dockerfile: docker/Dockerfile.zenoh
     privileged: true
     network_mode: host
-    restart: 'no'
+    restart: on-failure
     environment:
       BASE101_ENABLE_HARDWARE: 'false'
+      BASE101_ZENOH_DEVICE: /dev/serial/by-id/usb-RoboCore_Link101_ROS_Node_983DBCDBA0D7E993-if00
   bringup:
     build: {context: ., dockerfile: docker/Dockerfile.hardware}
     privileged: true
     network_mode: host
-    restart: 'no'
+    restart: on-failure
     environment:
       BASE101_ENABLE_HARDWARE: 'false'
+      BASE101_ARM: 'false'
+      BASE101_LIDAR_DEVICE: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
     command: [base101-hardware-service, bringup]
   camera:
     build: {context: ., dockerfile: docker/Dockerfile.hardware}
     privileged: true
     network_mode: host
-    restart: 'no'
+    restart: on-failure
     environment:
       BASE101_ENABLE_CAMERA: 'false'
     command: [base101-hardware-service, camera]
   navigation:
     build: {context: ., dockerfile: docker/Dockerfile.hardware}
     network_mode: host
-    restart: 'no'
+    restart: on-failure
     environment:
       BASE101_ENABLE_MAPPING: 'false'
       BASE101_ENABLE_NAVIGATION: 'false'
@@ -36,5 +39,15 @@ services:
   visualiser:
     build: {context: ., dockerfile: docker/Dockerfile.hardware}
     network_mode: host
-    restart: 'no'
+    restart: on-failure
     command: [base101-hardware-service, visualiser]
+  robocore-agent:
+    build: {context: ., dockerfile: docker/Dockerfile.agent}
+    network_mode: host
+    restart: on-failure
+    stop_grace_period: 75s
+    depends_on: [zenoh-router]
+    volumes: ["robocore-state:/var/lib/robocore"]
+
+volumes:
+  robocore-state:

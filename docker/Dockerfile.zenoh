@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /zenohd /usr/local/bin/zenohd
 COPY docker/start.zenoh.sh /usr/local/bin/start-zenoh
-RUN chmod +x /usr/local/bin/start-zenoh
+COPY docker/serial-path.sh /usr/local/bin/base101-serial-path
+RUN chmod +x /usr/local/bin/start-zenoh /usr/local/bin/base101-serial-path
 
 ENTRYPOINT ["/usr/local/bin/start-zenoh"]
