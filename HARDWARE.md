@@ -71,7 +71,7 @@ instead, launched unconditionally from
 *whole* graph (robot_state_publisher, twist_mux, this EKF, rosboard, lidar,
 camera, SLAM/Nav2, and arm ros2_control if `arm:=true`; see "Bring up the
 base" below), the same `nav`/`slam`/`agent` argument contract
-`sim.launch.py` has. It's the **one and only** publisher of `/odom` and
+`gazebo.launch.py` has. It's the **one and only** publisher of `/odom` and
 `odom → base_link` on hardware:
 
 | Input | Fused | Not fused |
@@ -179,7 +179,7 @@ ros2 launch base101_bringup_hw robot.launch.py
 ```
 
 `robot.launch.py` owns the **whole** graph now — same shape as
-`sim.launch.py`, per `docs/bringup-restructure.md`'s original design.
+`gazebo.launch.py`, per `docs/bringup-restructure.md`'s original design.
 Unconditional: `robot_state_publisher` (from `base101.hardware.xacro`,
 `simulator:=none`), `twist_mux` (`use_stamped:true`) in front of
 `/link101/cmd_vel` — straight to the firmware, no controller_manager in
@@ -236,7 +236,7 @@ On hardware, `base101_slam` + `base101_nav` are launched together directly
 from `robot.launch.py` (`nav:=`/`slam:=`, see "Bring up the base" above) —
 both remain independent packages with their own launch files (nav doesn't
 require slam to be running, or vice versa); `robot.launch.py` only composes
-them, the same way `sim.launch.py` already did for the sim side. (Used to
+them, the same way `gazebo.launch.py` already did for the sim side. (Used to
 be a separate `base101_autonomy` package/forge component, specifically to
 avoid pulling slam/nav's dependencies into `base101_bringup_hw` — moot now
 that `base101_bringup_hw/package.xml` depends on them directly; the package

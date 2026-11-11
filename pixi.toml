@@ -2,16 +2,14 @@
 #
 #   curl -fsSL https://pixi.sh/install.sh | bash      # one-time, if you don't have pixi
 #   pixi install                                      # solve + fetch ROS 2 Jazzy
-#   pixi run build                                    # colcon build (armless — see below)
+#   pixi run build                                    # colcon build
 #   pixi shell                                         # drop into the env (workspace overlaid)
-#   pixi run sim                                        # ros2 launch base101_bringup_gazebo sim.launch.py
+#   pixi run sim                                        # Gazebo:  base101_bringup_sim gazebo.launch.py
+#   pixi run -e mujoco mujoco-sim                       # MuJoCo:  base101_bringup_sim mujoco.launch.py
 #
-# `build`/`test`/`clean`/`stop` are identical in every environment, so a bare
-# `pixi run <task>` resolves fine for those. `sim` is the one task
-# `[feature.arm.tasks]` actually overrides (arm:=true vs arm:=false) — pixi
-# treats THAT as ambiguous for a bare `pixi run sim` and refuses to guess,
-# even though one environment is literally named "default". Pass `-e default`
-# or `-e arm` for `sim` specifically.
+# Two environments, one per simulator: `default` (Gazebo) and `mujoco`. The
+# arm is a launch argument in both (`pixi run sim arm:=true`), not an
+# environment; it needs the mod101 underlay (see PIXI.md).
 #
 # This is a self-contained ROS 2 Jazzy from the RoboStack conda channel — it does
 # NOT use /opt/ros. Never `source /opt/ros/jazzy/setup.bash` inside `pixi shell`;
@@ -19,11 +17,8 @@
 #
 # base101_arm_moveit_config is skipped in every environment (see [tasks].build)
 # — no MoveIt here on purpose, arm:=true only gets ros2_control (position/
-# trajectory controllers via base101_control_plugin/mock, see
-# base101_arm.hardware.xacro) — and that package needs moveit_ros_move_group/
+# trajectory controllers) — and that package needs moveit_ros_move_group/
 # moveit_planners_ompl/etc., which this file deliberately doesn't install.
-# `-e arm` only changes which sim.launch.py arg it passes (arm:=true) — see
-# PIXI.md for the mod101 underlay build order arm:=true still needs.
 #
 # See https://robostack.github.io/GettingStarted.html and this repo's PIXI.md.
 
@@ -58,7 +53,7 @@ ros-jazzy-ros2-controllers = "*"              # joint_state_broadcaster, joint_t
 ros-jazzy-diff-drive-controller = "*"         # NOT in the ros2_controllers metapackage — base101's wheels need it explicitly
 ros-jazzy-gz-ros2-control = "*"
 ros-jazzy-twist-mux = "*"
-ros-jazzy-laser-filters = "*"                  # sim.launch.py's scan_filter node — not in base101_bringup_gazebo's
+ros-jazzy-laser-filters = "*"                  # gazebo.launch.py's scan_filter node — not in base101_bringup_sim's
                                                 # own package.xml (launch-time dep only), easy to miss from that alone
 
 ros-jazzy-ros-gz-sim = "*"
@@ -95,30 +90,56 @@ build = "colcon build --symlink-install --packages-skip base101_arm_moveit_confi
 test = { cmd = "colcon test && colcon test-result --verbose", depends-on = ["build"] }
 clean = "rm -rf build install log"
 # agent:=false: robocore_agent isn't vendored in this workspace (see
-# base101_bringup_gazebo/package.xml's exec_depend on it) — sim.launch.py's
-# default is agent:=true, which would fail to find the executable. Add
-# `-- agent:=true` yourself once it's built/sourced.
-sim = "ros2 launch base101_bringup_gazebo sim.launch.py agent:=false"
-# Not overridden in [feature.arm.tasks] on purpose: one definition, shared
-# by every environment, so a bare `pixi run stop` works regardless of which
-# `-e` you launched with — no need to remember or guess. See pixi/stop.sh.
+# base101_bringup_sim/package.xml's exec_depend on it) — the launchers'
+# default is agent:=true, which would fail to find the executable. Extra
+# launch args go after the task name: `pixi run sim arm:=true`.
+sim = "ros2 launch base101_bringup_sim gazebo.launch.py agent:=false"
+# One definition shared by every environment, so a bare `pixi run stop` works
+# whichever one you launched from. See pixi/stop.sh.
 stop = "bash pixi/stop.sh"
 
 [environments]
-# `pixi shell`         -> armless sim
-# `pixi shell -e arm`  -> sim with arm:=true (ros2_control only, no MoveIt —
-#                         see header). Same dependencies as default; build
-#                         mod101 with ITS OWN pixi env first and source its
-#                         install/ (see PIXI.md) — this env doesn't vendor
-#                         or build mod101 itself. No [feature.arm.dependencies]
-#                         table: there's nothing this environment needs that
-#                         `default` doesn't already have.
+# `pixi shell`           -> Gazebo
+# `pixi shell -e mujoco` -> MuJoCo (mujoco_ros2_control; one-time
+#                           `pixi run -e mujoco mujoco-setup` first)
+# arm:=true works in both; it needs the mod101 underlay (see PIXI.md).
 default = { features = [], solve-group = "main" }
-arm = { features = ["arm"], solve-group = "main" }
+mujoco = { features = ["mujoco"], solve-group = "main" }
 
-# --- feature: arm:=true in sim, ros2_control only, no MoveIt ----------------
-# Only overrides `sim` — `build`/`test`/`clean`/`stop` are identical to
-# `default`'s, so they're not redeclared here (features inherit whatever
-# [tasks] doesn't override).
-[feature.arm.tasks]
-sim = "ros2 launch base101_bringup_gazebo sim.launch.py agent:=false arm:=true"
+# --- feature: MuJoCo (see mujoco.md, ../mod101/mujoco.md, docs/macos.md) ----
+# Same pins as mod101's mujoco environment — they share the MJCF tooling
+# (mod101_mujoco, from the mod101 underlay) and must agree on MuJoCo.
+[feature.mujoco.dependencies]
+# libmujoco from RoboStack's vendor package; 0.0.9 (MuJoCo 3.10) does not
+# co-solve with this ROS env. Python bindings from the PyPI wheel below,
+# pinned to the SAME version so generated MJCF loads in the C++ sim.
+ros-jazzy-mujoco-vendor = "==0.0.8"   # -> libmujoco 3.8.1
+glfw = ">=3.4,<4"
+# mujoco_ros2_control has no osx-arm64 RoboStack build -> built from source
+# (mujoco-setup); these are its build deps not already in [dependencies].
+ros-jazzy-control-toolbox = "*"
+ros-jazzy-backward-ros = "*"
+ros-jazzy-transmission-interface = "*"
+ros-jazzy-realtime-tools = "*"
+ros-jazzy-ros2-control-cmake = "*"
+ros-jazzy-tinyxml2-vendor = "*"
+ros-jazzy-urdfdom-py = "*"
+ros-jazzy-python-orocos-kdl-vendor = "*"
+ros-jazzy-imu-sensor-broadcaster = "*"   # /sensors/imu from the MuJoCo IMU
+fmt = "*"
+eigen = "*"
+scipy = "*"                              # trimesh convex hulls (MJCF converter)
+
+[feature.mujoco.pypi-dependencies]
+mujoco = "==3.8.1"   # MUST match the vendor's libmujoco
+coacd = ">=1.0.14"   # convex decomposition of concave collision meshes
+trimesh = "*"
+
+[feature.mujoco.tasks]
+# Builds mujoco_ros2_control from the fork checkout next to this repo
+# (../mujoco_ros2_control, branch macos-support) into .mujoco_ws/.
+mujoco-setup = "bash pixi/mujoco_setup.sh"
+mujoco-sim = "ros2 launch base101_bringup_sim mujoco.launch.py agent:=false"
+# Viewer for the headless sim (macOS: GLFW windows only on the main thread,
+# hence mjpython). Lives in mod101 for now.
+mujoco-view = "mjpython ../mod101/tools/mujoco/mirror_viewer.py"

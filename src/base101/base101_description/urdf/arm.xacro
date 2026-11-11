@@ -31,9 +31,11 @@
   <color rgba="0.200 0.200 0.200 1.0"/>
 </material>
 
-<!-- The arm only gets gz_ros2_control/gazebo extensions in the gazebo sim;
-     mujoco scenes don't model it yet and simulator=none is rviz-only. -->
-<xacro:property name="arm_use_sim" value="${'$(arg simulator)' == 'gazebo'}"/>
+<!-- The arm's sim ros2_control blocks: in gazebo and mujoco. Which simulator
+     they target follows mod101's own document-global `simulator` arg — the
+     same arg as ours, so this file's value flows through (mod101_macro.xacro).
+     simulator=none is rviz/real hardware (base101.hardware.xacro). -->
+<xacro:property name="arm_use_sim" value="${'$(arg simulator)' in ('gazebo', 'mujoco')}"/>
 
 <!-- Mount point on the chassis deck (top_plate_1) top face. mod101's
      base_link sits at the centre of its own base plate on the mounting face,

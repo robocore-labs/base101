@@ -11,16 +11,16 @@ config/gazebo.rviz        RViz preset for looking at the sim
 ```
 
 The launch that consumes all of this is
-`base101_bringup_gazebo/launch/sim.launch.py`:
+`base101_bringup_sim/launch/gazebo.launch.py`:
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py
-ros2 launch base101_bringup_gazebo sim.launch.py world:=empty.sdf
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true
+ros2 launch base101_bringup_sim gazebo.launch.py
+ros2 launch base101_bringup_sim gazebo.launch.py world:=empty.sdf
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true
 ```
 
 `world:=` takes either a bare filename from `worlds/` or an absolute path.
 
 Renamed from `base101_gazebo` in the 2026-08 bringup restructure — the old
-name sat one letter away from `base101_bringup_gazebo` and the two were
+name sat one letter away from `base101_bringup_sim` and the two were
 constantly confused. See `docs/bringup-restructure.md`.

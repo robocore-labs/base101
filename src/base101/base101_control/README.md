@@ -3,7 +3,7 @@
 `ros2_control` configuration and bringup for the base101 **in sim**. Owns the
 controller_manager configs, the `twist_mux` priority table, and the
 hardware-overlay xacro. Configuration only — the launches that consume it
-live in `base101_bringup_gazebo` and `base101_bringup_hw`.
+live in `base101_bringup_sim` and `base101_bringup_hw`.
 
 Real hardware has no `ros2_control` at all anymore — the Axon 2 firmware owns
 the whole control loop itself over zenoh (see HARDWARE.md) — so only

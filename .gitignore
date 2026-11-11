@@ -58,3 +58,5 @@ dist/
 # stays as a guard against the same mistake if a similar bind mount ever
 # comes back.
 docker/.*/home/
+# mujoco_ros2_control build (pixi/mujoco_setup.sh), see docs/macos.md
+.mujoco_ws/

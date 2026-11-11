@@ -8,7 +8,7 @@
     the real robot — robot_state_publisher, twist_mux, a host-side EKF,
     rosboard, the RPLidar C1 + self-filter chain, the RealSense D415, SLAM +
     Nav2, and (arm:=true) the arm's ros2_control — same argument contract as
-    base101_bringup_gazebo/launch/sim.launch.py, per docs/
+    base101_bringup_sim/launch/gazebo.launch.py, per docs/
     bringup-restructure.md's original design. Used to be narrower
     (robot_state_publisher/twist_mux/EKF/rosboard only) with lidar/camera/
     autonomy split into separate forge/Docker components for their own
@@ -45,7 +45,7 @@
   <!-- Autonomy — folded in from the former base101_autonomy forge
        component. base101_slam/base101_nav remain independent packages
        with their own launch files (nav_restructure.md); this package only
-       composes them, same as base101_bringup_gazebo already does. -->
+       composes them, same as base101_bringup_sim already does. -->
   <exec_depend>base101_slam</exec_depend>
   <exec_depend>base101_nav</exec_depend>
   <!-- robocore_agent: NOT declared, same as base101_arm_moveit_config below
@@ -53,7 +53,7 @@
        default so that's fine. Add it back once it's actually sourced. -->
 
   <!-- arm:=true only — ros2_control for the arm (see base101_arm.hardware.xacro
-       / controllers.hw.yaml). Same convention as base101_bringup_gazebo's
+       / controllers.hw.yaml). Same convention as base101_bringup_sim's
        package.xml: mod101_description/base101_arm_moveit_config are
        deliberately NOT declared, mod101 is a separate repo/underlay. -->
   <exec_depend>base101_control_plugin</exec_depend>

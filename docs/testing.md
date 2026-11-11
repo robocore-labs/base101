@@ -75,7 +75,7 @@ for tool in jaws parallel none pincopen; do
 done; echo
 
 # --- every launch file resolves its args
-for l in "base101_bringup_gazebo sim.launch.py" \
+for l in "base101_bringup_sim gazebo.launch.py" \
          "base101_bringup_hw robot.launch.py" \
          "base101_bringup_hw display.launch.py" \
          "base101_nav nav.launch.py" \
@@ -121,7 +121,7 @@ EOF
 ## 2. Simple variant
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py
+ros2 launch base101_bringup_sim gazebo.launch.py
 ```
 
 | check | how | pass |
@@ -137,7 +137,7 @@ ros2 launch base101_bringup_gazebo sim.launch.py
 Camera toggle — the mesh and the simulated FOV change, the topics do not:
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py camera:=oak_d
+ros2 launch base101_bringup_sim gazebo.launch.py camera:=oak_d
 ```
 
 **Pass:** the front module is visibly shorter, `/base_camera/*` topics are
@@ -153,7 +153,7 @@ ros2 launch base101_bringup_hw display.launch.py gui:=false camera:=oak_d
 ## 3. Arm variant — slider control
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true
 ```
 
 | check | how | pass |
@@ -178,7 +178,7 @@ Every tool:
 
 ```bash
 for t in jaws parallel pincopen none; do
-  ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_tool:=$t
+  ros2 launch base101_bringup_sim gazebo.launch.py arm:=true arm_tool:=$t
 done
 ```
 
@@ -189,7 +189,7 @@ command moves the whole gripper.
 ## 4. Arm variant — MoveIt planning
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true moveit:=true
 ```
 
 That is Gazebo with the trajectory controllers plus `move_group`, in order
@@ -197,7 +197,7 @@ That is Gazebo with the trajectory controllers plus `move_group`, in order
 up, in two terminals:
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_control:=moveit
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true arm_control:=moveit
 ros2 launch base101_arm_moveit_config move_group.launch.py
 ```
 
@@ -280,7 +280,7 @@ defaults — meaning `arm.xacro` stopped passing the build args through.
 The launch defaults follow too:
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py --show-args | grep -A2 "'arm_tool'"
+ros2 launch base101_bringup_sim gazebo.launch.py --show-args | grep -A2 "'arm_tool'"
 ```
 
 **Pass:** `(default: 'parallel')`.

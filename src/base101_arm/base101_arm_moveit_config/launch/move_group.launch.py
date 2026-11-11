@@ -9,11 +9,11 @@ This starts move_group only, and is a stack launch: normally you do not run it
 directly, you ask the bringup for it, which starts the sim with the trajectory
 controllers and then move_group in the right order —
 
-    ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
+    ros2 launch base101_bringup_sim gazebo.launch.py arm:=true moveit:=true
 
 Running it by hand against an already-up sim still works:
 
-    ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_control:=moveit
+    ros2 launch base101_bringup_sim gazebo.launch.py arm:=true arm_control:=moveit
     ros2 launch base101_arm_moveit_config move_group.launch.py
 
 Launch args:

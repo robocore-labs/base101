@@ -48,7 +48,7 @@ cd ~/robots/base101
 colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 
-ros2 launch base101_bringup_gazebo sim.launch.py
+ros2 launch base101_bringup_sim gazebo.launch.py
 ```
 
 That's a robot in Gazebo, driving, scanning, publishing `/odom` — open
@@ -63,7 +63,7 @@ cd ~/robots/base101
 colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true
 ```
 
 **This is the only place the build is documented** — everything below assumes
@@ -81,19 +81,19 @@ you've run it. Two footnotes that will save you an afternoon:
 ### Things to try
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py                    # bare chassis, sticky_floor world
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true          # chassis + 1 mod101 arm
-ros2 launch base101_bringup_gazebo sim.launch.py world:=empty.sdf   # pick a world
-ros2 launch base101_bringup_gazebo sim.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
-ros2 launch base101_bringup_gazebo sim.launch.py nav:=false         # no SLAM/Nav2, just the robot
-ros2 launch base101_bringup_gazebo sim.launch.py agent:=false       # no robocore agent
+ros2 launch base101_bringup_sim gazebo.launch.py                    # bare chassis, sticky_floor world
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
+ros2 launch base101_bringup_sim gazebo.launch.py world:=empty.sdf   # pick a world
+ros2 launch base101_bringup_sim gazebo.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
+ros2 launch base101_bringup_sim gazebo.launch.py nav:=false         # no SLAM/Nav2, just the robot
+ros2 launch base101_bringup_sim gazebo.launch.py agent:=false       # no robocore agent
 ros2 launch base101_bringup_hw     display.launch.py                # rviz only, no sim
 ```
 
 `camera:=realsense|oak_d` picks which depth module hangs off the front bracket
 (default `realsense`). It only swaps the mesh and the simulated FOV — topics
 stay `/base_camera/*` and frames stay `camera_link` / `camera_optical_frame`
-either way, so nothing downstream notices. Both `sim.launch.py` and
+either way, so nothing downstream notices. Both `gazebo.launch.py` and
 `display.launch.py` take it.
 
 SLAM, Nav2 and the robocore agent all come up with the sim by default
@@ -112,7 +112,7 @@ Manual test procedures for every variant, tool and launch combination are in
 ### On the real robot
 
 Motors, IMU and lidar all hang off the Axon 2 board and talk to ROS 2 over
-zenoh. `robot.launch.py` owns the whole graph, same shape as `sim.launch.py`
+zenoh. `robot.launch.py` owns the whole graph, same shape as `gazebo.launch.py`
 — cmd_vel goes straight from `twist_mux` to the firmware, and `lidar:=`/
 `camera:=`/`nav:=`/`slam:=`/`agent:=` all come up from the one launch:
 
@@ -136,8 +136,8 @@ that's designed to be embedded — it's a prefix-parameterised xacro macro, so
 base101 mounts it with one call and gets joints `arm_1…6`.
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true                   # jaws gripper
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_tool:=parallel
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true                   # jaws gripper
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true arm_tool:=parallel
 ros2 launch base101_bringup_hw display.launch.py arm:=true                   # rviz only
 ```
 
@@ -173,7 +173,7 @@ Two things worth knowing before they confuse you:
 ### Motion planning
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true   # gazebo + move_group
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true moveit:=true   # gazebo + move_group
 ```
 
 This config exists because mod101's own only knows arm-vs-arm collisions — but
@@ -258,8 +258,8 @@ the folders are purely organisational. Packages parked out of the build live in
 
 | Package | Type | Purpose |
 |---|---|---|
-| `base101_bringup_gazebo` | ament_cmake | `sim.launch.py` — the whole robot in Gazebo: model, controllers, bridges, SLAM, Nav2, optionally arm + MoveIt. |
-| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the whole robot on real hardware, same argument contract as `sim.launch.py`: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`, lidar, camera, SLAM/Nav2 (`nav:=`/`slam:=`), robocore agent (`agent:=`), and (`arm:=true`) the arm's `controller_manager`. Also owns `display.launch.py` (RViz only). |
+| `base101_bringup_sim` | ament_cmake | `gazebo.launch.py` — the whole robot in Gazebo: model, controllers, bridges, SLAM, Nav2, optionally arm + MoveIt. |
+| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the whole robot on real hardware, same argument contract as `gazebo.launch.py`: `robot_state_publisher`, `twist_mux`, the host-side EKF, `rosboard`, lidar, camera, SLAM/Nav2 (`nav:=`/`slam:=`), robocore agent (`agent:=`), and (`arm:=true`) the arm's `controller_manager`. Also owns `display.launch.py` (RViz only). |
 
 Arm or no arm is the `arm:=` argument, not a package. Before the 2026-08
 restructure it was six packages (`base101_simple_{description,gazebo,control}`
@@ -280,7 +280,7 @@ back to owning the whole graph directly.
 ```mermaid
 graph TD
     subgraph bringup["bringup — what you launch"]
-        SIM["base101_bringup_gazebo<br/><i>sim.launch.py</i>"]
+        SIM["base101_bringup_sim<br/><i>gazebo.launch.py</i>"]
         HW["base101_bringup_hw<br/><i>robot.launch.py, display.launch.py</i>"]
     end
 

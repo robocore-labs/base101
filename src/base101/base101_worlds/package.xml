@@ -6,7 +6,7 @@
   <description>
     Sim-common assets for the base101 mobile base: Gazebo Sim worlds, the
     ros_gz bridge config, and the sim RViz preset. Assets only — the launch
-    that consumes them lives in base101_bringup_gazebo.
+    that consumes them lives in base101_bringup_sim.
   </description>
   <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
   <license>MIT</license>

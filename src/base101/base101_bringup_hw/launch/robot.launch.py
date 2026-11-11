@@ -8,7 +8,7 @@
     ros2 launch base101_bringup_hw robot.launch.py rosboard:=false
 
 This is the mega-launch bringup-restructure.md originally proposed (2026-08-22:
-"Both [sim.launch.py and robot.launch.py] own the whole graph and expose the
+"Both [gazebo.launch.py and robot.launch.py] own the whole graph and expose the
 same argument contract, so muscle memory transfers between sim and robot") —
 what actually shipped for a while was narrower (robot_state_publisher +
 twist_mux + EKF + rosboard only), with SLAM/nav/lidar/camera split into
@@ -28,7 +28,7 @@ Startup order:
       -> +10 s: slam + nav                          (needs /tf + odom from
                                                       the EKF above, and
                                                       /scan_filtered from
-                                                      lidar; sim.launch.py
+                                                      lidar; gazebo.launch.py
                                                       uses the same kind of
                                                       delay for the same
                                                       reason, autonomy.
@@ -66,7 +66,7 @@ from launch_ros.substitutions import FindPackageShare
 def _configured_tool():
     """The end-effector the mod101 configurator last saved.
 
-    Same helper as base101_bringup_gazebo/launch/sim.launch.py — duplicated
+    Same helper as base101_bringup_sim/launch/gazebo.launch.py — duplicated
     rather than shared, matching this package's existing no-cross-package-
     launch-dependency scope (see module docstring). `arm_tool:=parallel`
     still overrides; if the mod101 underlay isn't sourced (arm:=false runs
@@ -117,7 +117,7 @@ def _setup(context, *args, **kwargs):
     nav = arg('nav') == 'true'
     slam = arg('slam') == 'true'
     agent = arg('agent') == 'true'
-    # Same `moveit`/`sliders` aliasing as sim.launch.py's arm_control, minus
+    # Same `moveit`/`sliders` aliasing as gazebo.launch.py's arm_control, minus
     # actually launching move_group — this file has no `moveit:=` arg;
     # `arm_control:=trajectory` gets the same controller MoveIt would drive,
     # launched from wherever move_group is (base101_arm_moveit_config).
@@ -296,7 +296,7 @@ def _setup(context, *args, **kwargs):
 
         spawned = [spawner('joint_state_broadcaster')]
         # ONE controller per exclusive pair is spawned — position by
-        # default, same convention as sim.launch.py. The twin is declared
+        # default, same convention as gazebo.launch.py. The twin is declared
         # in controllers.hw.yaml but not spawned: its type/params are
         # already on the controller_manager, and the robocore agent (or
         # MoveIt) loads it on demand at control-session entry, dropping
@@ -313,7 +313,7 @@ def _setup(context, *args, **kwargs):
     # base101_autonomy/launch/autonomy.launch.py — same +10s delay and same
     # reasoning (both read /tf + odom from the EKF above, and slam/nav
     # remain architecturally independent packages; this file only composes
-    # them, same as sim.launch.py does for the sim side).
+    # them, same as gazebo.launch.py does for the sim side).
     tail = []
     if slam:
         tail.append(_stack('base101_slam', 'slam.launch.py'))

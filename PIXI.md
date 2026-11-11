@@ -6,7 +6,7 @@ folder, pulled from the [RoboStack](https://robostack.github.io) conda channel. 
 
 This is **sim only** — for real hardware, `HARDWARE.md` and `docker/hw/` are still
 the reference (rmw_zenoh, the Axon 2/link101 firmware, forge deployment — none of
-that is pixi's concern). This is for getting `base101_bringup_gazebo`'s sim stack
+that is pixi's concern). This is for getting `base101_bringup_sim`'s sim stack
 running natively on macOS, where the `docker/sim/` Dockerfile route isn't
 practical (no GPU passthrough into Linux containers on Apple Silicon).
 
@@ -23,7 +23,7 @@ exec $SHELL          # pick up the PATH change
 pixi install         # solve + download ROS 2 Jazzy (first run: a few minutes)
 pixi run build        # colcon build the workspace (skips base101_arm_moveit_config - see below)
 pixi shell            # enter the environment - workspace overlay included
-pixi run sim           # ros2 launch base101_bringup_gazebo sim.launch.py arm:=false agent:=false
+pixi run sim           # ros2 launch base101_bringup_sim gazebo.launch.py arm:=false agent:=false
 ```
 
 `build`/`test`/`clean`/`stop` are identical in every environment (bare `pixi
@@ -93,13 +93,13 @@ where `[feature.arm.tasks]` overrides one (see pixi's
 | Task     | `-e default`                                                                    | `-e arm`                       |
 |----------|-----------------------------------------------------------------------------------|----------------------------------|
 | `build`  | `colcon build --symlink-install --packages-skip base101_arm_moveit_config ...`    | same — not overridden            |
-| `sim`    | `ros2 launch base101_bringup_gazebo sim.launch.py agent:=false`                   | + `arm:=true`                    |
+| `sim`    | `ros2 launch base101_bringup_sim gazebo.launch.py agent:=false`                   | + `arm:=true`                    |
 | `test`   | `colcon test && colcon test-result --verbose` (builds first)                      | same — not overridden            |
 | `clean`  | `rm -rf build install log`                                                        | same — not overridden            |
 | `stop`   | `bash pixi/stop.sh` — kills anything this workspace started, see below            | same — not overridden            |
 
 Anything not listed still works inside `pixi shell` / `pixi run --`, e.g.
-`pixi run -- ros2 launch base101_bringup_gazebo sim.launch.py headless:=true`.
+`pixi run -- ros2 launch base101_bringup_sim gazebo.launch.py headless:=true`.
 
 ## `pixi run stop` — actually stopping everything
 
@@ -144,7 +144,7 @@ base101-specific bug:
 > On macOS, you will need to run Gazebo using two terminals, one for the server
 > and another for the GUI... The GUI on macOS is currently known to be unstable.
 
-`sim.launch.py` handles this: on `sys.platform == 'darwin'` (and `headless:=false`
+`gazebo.launch.py` handles this: on `sys.platform == 'darwin'` (and `headless:=false`
 — headless already only ever runs `-s`, no GUI, so it was never affected) it
 starts `gz sim -s -r <world>` and `gz sim -g` as two separate processes instead of
 one combined `gz sim -r <world>` call. Linux is unaffected — same single-process
@@ -220,8 +220,8 @@ environment exists for it yet, and `rplidar_ros`/`realsense2_camera`/
   all — every spawner hung forever. Fixed in `pixi/activate.sh`
   (`$CONDA_PREFIX`-based, not hardcoded to one environment name).
 - `ros-jazzy-laser-filters` was missing entirely — a launch-time dependency
-  of `sim.launch.py`'s `scan_filter` node, not one declared in
-  `base101_bringup_gazebo`'s own `package.xml`, so a package.xml
+  of `gazebo.launch.py`'s `scan_filter` node, not one declared in
+  `base101_bringup_sim`'s own `package.xml`, so a package.xml
   cross-reference alone missed it.
 - `ros-jazzy-pick-ik` isn't published for osx-arm64 on RoboStack — and once
   MoveIt itself got dropped from the `arm` environment entirely (ros2_control
@@ -231,7 +231,7 @@ environment exists for it yet, and `rplidar_ros`/`realsense2_camera`/
 - Bare `pixi run build` was ambiguous (defined identically in both `default`
   and `arm` at the time) — no longer an issue now that `build` isn't
   feature-overridden at all; `sim` still needs `-e default`/`-e arm`.
-- The `sim.launch.py` "Ogre2 plugin fails to load" error is confirmed
+- The `gazebo.launch.py` "Ogre2 plugin fails to load" error is confirmed
   harmless (see the macOS Gazebo section) — logged on every run, doesn't
   affect the GUI actually rendering.
 - Stray background processes from imperfectly-killed test runs (backgrounded

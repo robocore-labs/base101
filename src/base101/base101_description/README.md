@@ -18,7 +18,7 @@ its own assembly package; `arm` is now an argument, not a package. See
 [`docs/bringup-restructure.md`](../../../docs/bringup-restructure.md).
 
 You still don't launch this package — the bringup packages do
-(`base101_bringup_gazebo`, `base101_bringup_hw`). See the top-level
+(`base101_bringup_sim`, `base101_bringup_hw`). See the top-level
 [README](../../../README.md) for the package-structure graph.
 
 **`arm.xacro` must stay inside its `<xacro:if>`.** It resolves

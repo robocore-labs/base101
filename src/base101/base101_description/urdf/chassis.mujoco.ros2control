@@ -1,12 +1,19 @@
 <?xml version="1.0" ?>
 <robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- ros2_control hardware interface for MuJoCo. The MujocoSystem plugin
-       (from mujoco_ros2_control) ties each named joint to the mjData qvel
-       slot of the same name in base101_mujoco/scenes/base101_<variant>.xml. -->
+  <!-- ros2_control for MuJoCo (mujoco_ros2_control), simulator:=mujoco.
+
+       The MJCF is generated from this URDF at launch
+       (base101_bringup_sim/launch/mujoco.launch.py, converter from
+       mod101_mujoco): the wheel command interfaces below become MuJoCo
+       velocity actuators, and the Gazebo <sensor> blocks in chassis.gazebo
+       become the MuJoCo sensors (lidar, camera, and the IMU sensors this block
+       reads). mujoco_model/headless are added by the launch, which also merges
+       this block with the arm's into one system — MujocoSystemInterface runs a
+       whole physics world per instance. -->
   <ros2_control name="base101_mujoco_system" type="system">
     <hardware>
-      <plugin>mujoco_ros2_control/MujocoSystem</plugin>
+      <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
     </hardware>
 
     <joint name="front_left_wheel_joint">
@@ -29,6 +36,25 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
+    <!-- Same name as the Gazebo IMU sensor (chassis.gazebo, base_imu at
+         imu_link): the converter creates MuJoCo sensors base_imu_quat /
+         base_imu_gyro / base_imu_accel there, which this reads.
+         imu_sensor_broadcaster publishes it as /sensors/imu. -->
+    <sensor name="base_imu">
+      <param name="mujoco_type">imu</param>
+      <param name="frame_id">imu_link</param>
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+    </sensor>
   </ros2_control>
 
 </robot>

@@ -30,8 +30,8 @@ config/
 ├── moveit.rviz               fixed frame base_link, group arm_arm
 └── collisions/<tool>.srdf.xacro   GENERATED — chassis pairs only
 launch/
-└── move_group.launch.py      move_group alone; base101_bringup_gazebo composes
-                              it via sim.launch.py moveit:=true
+└── move_group.launch.py      move_group alone; base101_bringup_sim composes
+                              it via gazebo.launch.py moveit:=true
 scripts/gen_collision_matrix.py
 ```
 
@@ -40,13 +40,13 @@ scripts/gen_collision_matrix.py
 ```bash
 source ~/robots/mod101/install/setup.bash      # underlay first
 source install/setup.bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true moveit:=true
 ```
 
 or, against a sim you already have up:
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_control:=moveit
+ros2 launch base101_bringup_sim gazebo.launch.py arm:=true arm_control:=moveit
 ros2 launch base101_arm_moveit_config move_group.launch.py
 ```
 

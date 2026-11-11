@@ -1,7 +1,7 @@
 # base101 armless profile: mobility + sensing + slam.
 # The TurtleBot-equivalent baseline (spec section 22).
 #
-# Matches `ros2 launch base101_bringup_gazebo sim.launch.py` and
+# Matches `ros2 launch base101_bringup_sim gazebo.launch.py` and
 # `base101_bringup_hw robot.launch.py` with their defaults (arm:=false).
 # For the arm configuration use base101_arm.yaml. This file is sim-only —
 # for real hardware (different odom/lidar/imu topics) use base101_hw.yaml.

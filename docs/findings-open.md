@@ -70,7 +70,7 @@ only (position/trajectory controllers). See `HARDWARE.md`'s "Tower / arms".
 `ModuleNotFoundError: No module named 'moveit_configs_utils'`, and
 `dpkg -l | grep ros-jazzy-moveit` returns nothing. The package builds fine
 (it is ament_cmake installing configs) but cannot run here, so
-`sim.launch.py moveit:=true` is untested on this box. Everything MoveIt-side
+`gazebo.launch.py moveit:=true` is untested on this box. Everything MoveIt-side
 in the restructure — the SRDF robot-name fix and the URDF path change below —
 is therefore **verified only by inspection, never executed**.
 

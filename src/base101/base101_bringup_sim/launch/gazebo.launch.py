@@ -7,12 +7,12 @@ the `arm` argument. The argument contract matches base101_bringup_hw's, so
 what you type at the sim is what you type at the robot (minus `world` and
 `camera`, which only mean something here).
 
-    ros2 launch base101_bringup_gazebo sim.launch.py
-    ros2 launch base101_bringup_gazebo sim.launch.py arm:=true
-    ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
-    ros2 launch base101_bringup_gazebo sim.launch.py nav:=false rosboard:=false
-    ros2 launch base101_bringup_gazebo sim.launch.py agent:=false        # no robocore
-    ros2 launch base101_bringup_gazebo sim.launch.py world:=empty.sdf rviz:=true
+    ros2 launch base101_bringup_sim gazebo.launch.py
+    ros2 launch base101_bringup_sim gazebo.launch.py arm:=true
+    ros2 launch base101_bringup_sim gazebo.launch.py arm:=true moveit:=true
+    ros2 launch base101_bringup_sim gazebo.launch.py nav:=false rosboard:=false
+    ros2 launch base101_bringup_sim gazebo.launch.py agent:=false        # no robocore
+    ros2 launch base101_bringup_sim gazebo.launch.py world:=empty.sdf rviz:=true
 
 Startup order, which is the whole reason this file is not a flat list:
 
@@ -233,18 +233,18 @@ def _setup(context, *args, **kwargs):
     if sys.platform == 'darwin' and not headless:
         gz_sim = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
+                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_gazebo.launch.py')),
             launch_arguments={'gz_args': f'-s -r {world_file}'}.items(),
         )
         gz_gui = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
+                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_gazebo.launch.py')),
             launch_arguments={'gz_args': '-g'}.items(),
         )
     else:
         gz_sim = IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
+                os.path.join(pkg_ros_gz_sim, 'launch', 'gz_gazebo.launch.py')),
             launch_arguments={'gz_args': gz_args}.items(),
         )
 

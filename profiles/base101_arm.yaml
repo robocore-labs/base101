@@ -1,6 +1,6 @@
 # base101 arm profile: chassis + one deck-mounted mod101 arm.
 #
-# Matches `ros2 launch base101_bringup_gazebo sim.launch.py arm:=true`.
+# Matches `ros2 launch base101_bringup_sim gazebo.launch.py arm:=true`.
 # The armless baseline is base101.yaml; everything outside `groups` and
 # the wrist camera is identical to it and kept in sync by hand.
 #

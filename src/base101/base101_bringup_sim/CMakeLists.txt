@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(base101_bringup_gazebo)
+project(base101_bringup_sim)
 
 find_package(ament_cmake REQUIRED)
 

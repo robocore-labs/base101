@@ -60,7 +60,13 @@
   </xacro:if>
 
   <xacro:if value="${'$(arg simulator)' == 'mujoco'}">
+    <!-- Wheels + IMU under mujoco_ros2_control. The Gazebo sensor tags are
+         included too: MuJoCo ignores <gazebo>, and the MJCF converter reads
+         the lidar/camera/IMU specs from them — one definition per sensor.
+         Controllers come from the launch (no in-model plugin, unlike
+         gz_ros2_control). -->
     <xacro:include filename="$(find base101_description)/urdf/chassis.mujoco.ros2control"/>
+    <xacro:include filename="$(find base101_description)/urdf/chassis.gazebo"/>
   </xacro:if>
 
   <!-- simulator=isaac: driven natively from base101_isaac (no ros2_control).

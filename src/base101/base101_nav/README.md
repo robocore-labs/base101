@@ -17,7 +17,7 @@ Normally you don't launch this yourself — a bringup-tier package composes
 it. Both bringups bring it up by default (`nav:=false` to skip):
 
 ```bash
-ros2 launch base101_bringup_gazebo sim.launch.py       # sim + slam + nav2
+ros2 launch base101_bringup_sim gazebo.launch.py       # sim + slam + nav2
 ros2 launch base101_bringup_hw     robot.launch.py     # hardware + slam + nav2
 ```
 
@@ -29,7 +29,7 @@ colcon build --packages-select base101_nav base101_slam
 source install/setup.bash
 
 # The robot's body, without any autonomy
-ros2 launch base101_bringup_gazebo sim.launch.py nav:=false slam:=false
+ros2 launch base101_bringup_sim gazebo.launch.py nav:=false slam:=false
 
 # SLAM half (mapping by default; localization via service switch)
 ros2 launch base101_slam slam.launch.py use_sim_time:=true
@@ -71,7 +71,7 @@ something publishes the `map` frame, so `nav.launch.py` without
 | `costmap.yaml` | Unified global/local costmaps (all modes) |
 | `bt_navigator.sim.yaml` / `bt_navigator.hw.yaml` | Behavior tree navigator config — same sim/hw split, same reason |
 | `velocity_smoother.sim.yaml` / `velocity_smoother.hw.yaml` | Velocity command smoothing — same sim/hw split, same reason |
-| `laser_filter.yaml` | Sim-only scan self-filter, blanks the rear self-hit wedge (measured, see the file's own comments); launched from `base101_bringup_gazebo/launch/sim.launch.py`, not from here. Hardware's equivalent is `base101_lidar/config/lidar_filters.yaml`, run in that package's own launch instead of `base101_nav`'s. |
+| `laser_filter.yaml` | Sim-only scan self-filter, blanks the rear self-hit wedge (measured, see the file's own comments); launched from `base101_bringup_sim/launch/gazebo.launch.py`, not from here. Hardware's equivalent is `base101_lidar/config/lidar_filters.yaml`, run in that package's own launch instead of `base101_nav`'s. |
 
 ## Robot Parameters
 
