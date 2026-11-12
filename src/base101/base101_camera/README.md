@@ -15,18 +15,16 @@ saga, the udev rule) if a future camera swap runs into similar issues.
 
 ## Why tune it
 
-- **Close-range depth.** The mod101 arm's grasp work happens at ~20-30cm.
-  `config/d415.yaml` runs depth/color at the D415's native 1280x720 (not a
-  lower-res default) and enables spatial/temporal/hole-filling filters for
-  cleaner depth at the cost of a little latency and fine detail — the right
-  tradeoff for grasp planning over fast motion tracking. **Not yet verified
-  on hardware:** the D415's commonly-cited native minimum depth range
-  (~30-45cm) may sit outside the low end of that target — there's no
-  IR-projector trick to lean on here the way there might be on other
-  RealSense models. Confirm the real achievable minimum with
-  `realsense-viewer` or by echoing `/camera/aligned_depth_to_color/
-  image_raw` at a known close distance before assuming this covers the
-  whole range.
+- **Lower bandwidth.** RGB and depth run at 640×480, 15 fps. Aligned depth
+  and the existing depth filters remain enabled. `config/d415.yaml` is a
+  flat RealSense launch configuration, not a ROS parameter-file wrapper.
+- **Compressed transport.** The hardware image installs the JPEG and
+  compressed-depth plugins. RGB is available on
+  `/camera/color/image_raw/compressed`; depth is available through the
+  corresponding `/compressedDepth` topics. Encoding is subscriber-driven.
+  Raw topics remain available for perception. The hardware dashboard uses
+  compressed RGB; its depth preview uses raw depth because compressedDepth
+  has a separate binary format.
 - **No onboard IMU.** The D415 doesn't have one (unlike the D435i/D455) —
   there's nothing to enable. The robot's actual IMU is the Axon board's
   (see [`HARDWARE.md`](../../../HARDWARE.md)'s topic contract, fused by the

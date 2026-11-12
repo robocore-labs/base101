@@ -2,7 +2,7 @@ name: base101 Hardware
 id: base101-hardware
 tagline: Live Link101 · lidar · RealSense
 cameras:
-  - {topic: /camera/color/image_raw, label: Base RGB}
+  - {topic: /camera/color/image_raw/compressed, label: Base RGB}
   - {topic: /camera/aligned_depth_to_color/image_raw, label: Base depth}
 maps:
   - {topic: /map, label: SLAM}

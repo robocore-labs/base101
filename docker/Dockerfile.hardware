@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  ros-jazzy-rmw-zenoh-cpp ros-jazzy-xacro ros-jazzy-robot-state-publisher \
  ros-jazzy-ros2-control ros-jazzy-ros2-controllers ros-jazzy-twist-mux ros-jazzy-robot-localization \
  ros-jazzy-laser-filters ros-jazzy-realsense2-camera \
+ ros-jazzy-compressed-image-transport ros-jazzy-compressed-depth-image-transport \
  ros-jazzy-slam-toolbox ros-jazzy-navigation2 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/base101_ws
