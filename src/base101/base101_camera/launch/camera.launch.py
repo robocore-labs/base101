@@ -8,15 +8,10 @@ package — swapped in after the OAK-D Lite integration turned out to sit on
 an unreliable USB2 hub on the real robot; see git history / HARDWARE.md for
 that saga) with base101's params file (config/d415.yaml).
 
-TF integration: unlike depthai_ros_driver, realsense2_camera does NOT spawn
-its own robot_state_publisher/URDF for a parent frame — it only publishes
-the static transforms from its own base frame *outward* to each optical
-frame (base_realsense_node.h's BASE_FRAME_ID/OPTICAL_FRAME_ID macros:
-BASE_FRAME_ID = tf_prefix + base_frame_id, no separator). So the standard
-integration is simpler: point base_frame_id at the mount frame
-base101_description's chassis.xacro already publishes (camera_link) and
-let realsense2_camera fill in everything below it — no parent_frame dance,
-no separate static_transform_publisher needed.
+TF integration: RealSense prepends camera_name to base_frame_id. Use
+base_frame_id="link" with camera_name="camera" to obtain camera_link, the
+mount frame already owned by robot_state_publisher. Passing "camera_link"
+produces camera_camera_link and disconnects the optical frames from the robot.
 
 camera_name/camera_namespace are both set to "camera" (not left at
 namespace-equals-name defaults, which would double the topic prefix like
@@ -54,7 +49,7 @@ def generate_launch_description():
         launch_arguments={
             'camera_name': 'camera',
             'camera_namespace': '',
-            'base_frame_id': 'camera_link',
+            'base_frame_id': 'link',
             'device_type': 'd415',
             'config_file': config_file,
         }.items(),

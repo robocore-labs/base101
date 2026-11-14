@@ -1,8 +1,9 @@
-# Camera frames: what robocore-sdk needs to change
+# Camera frames for the Ringfour SDK
 
-**Status:** the robot side is done. **The SDK side is not.** Until the profile
-change below lands, `deproject`, `get_cloud` and anything built on them are
-wrong by 90° for `base_camera` — silently, with no error.
+**Status:** current base and hardware profiles declare `optical: true`. Preserve
+this convention when using the Ringfour SDK (`from ringfour import Robot`).
+The historical filename is retained for existing links. Physical deprojection
+still needs a known-target check after deployment.
 
 ---
 
@@ -97,7 +98,7 @@ and that assumption no longer holds.
 
 ## Checklist
 
-- [ ] `base_camera` → `optical: true` in the profile
+- [x] `base_camera` → `optical: true` in the profile
 - [ ] `arm_wrist_camera` → `optical: true` when it is added to a profile
 - [ ] Re-verify one `deproject` against a known target after the change
 - [ ] Do **not** copy `optical: false` from any older profile

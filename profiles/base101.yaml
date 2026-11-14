@@ -70,7 +70,7 @@ slam:
 
 # No exploration section: explore_lite is not installed and is not launched
 # (nav_restructure.md dropped it — frontier finding became a Python concern),
-# and robocore_agent has no frontier code of its own. Declaring it advertised
+# and ringfour_agent has no frontier code of its own. Declaring it advertised
 # a capability nothing implements.
 
 teleop:

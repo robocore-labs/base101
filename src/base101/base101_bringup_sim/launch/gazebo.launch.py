@@ -11,7 +11,7 @@ what you type at the sim is what you type at the robot (minus `world` and
     ros2 launch base101_bringup_sim gazebo.launch.py arm:=true
     ros2 launch base101_bringup_sim gazebo.launch.py arm:=true moveit:=true
     ros2 launch base101_bringup_sim gazebo.launch.py nav:=false rosboard:=false
-    ros2 launch base101_bringup_sim gazebo.launch.py agent:=false        # no robocore
+    ros2 launch base101_bringup_sim gazebo.launch.py agent:=false        # no Ringfour agent
     ros2 launch base101_bringup_sim gazebo.launch.py world:=empty.sdf rviz:=true
 
 Startup order, which is the whole reason this file is not a flat list:
@@ -22,7 +22,7 @@ Startup order, which is the whole reason this file is not a flat list:
                                                   plugin in base101.xacro)
         -> joint_state_broadcaster
           -> diff_drive_controller [+ arm controllers]
-            -> +5 s: slam + nav2 [+ move_group] + robocore agent
+            -> +5 s: slam + nav2 [+ move_group] + Ringfour agent
 
 The autonomy tail is delayed rather than raced: slam_toolbox wants /scan and
 the odom->base_link TF (diff_drive_controller's) before it will build a map.
@@ -378,7 +378,7 @@ def _setup(context, *args, **kwargs):
         tail.append(_stack('base101_arm_moveit_config', 'move_group.launch.py',
                            arm_tool=arm_tool, rviz=rviz))
     if agent:
-        # The robocore agent: JSON-RPC bridge that drives this robot. It is a
+        # The Ringfour agent: JSON-RPC bridge that drives this robot. It is a
         # consumer of everything above (reads /base_camera/*, /scan, /map,
         # commands /cmd_vel_agent at twist_mux priority 50) and it supervises
         # the stacks rather than the reverse — which is why slam runs with
@@ -387,9 +387,9 @@ def _setup(context, *args, **kwargs):
         # Started last, after nav/slam, because it resolves topics and frames
         # at startup against whatever is up.
         tail.append(Node(
-            package='robocore_agent',
+            package='ringfour_agent',
             executable='agent',
-            name='robocore_agent',
+            name='ringfour_agent',
             output='screen',
             arguments=['--profile', resolve_profile(arg('profile'), arm),
                        '--port', arg('agent_port'),
@@ -430,7 +430,7 @@ def _setup(context, *args, **kwargs):
             parameters=[{'use_sim_time': True}], output='screen'))
         # Intrinsics. ros_gz_image bridges the image stream only, so without
         # this the wrist camera publishes pixels with no camera_info and
-        # nothing can project them into 3D — robocore_agent reports it as
+        # nothing can project them into 3D — ringfour_agent reports it as
         # "camera has no intrinsics". Its own node rather than an entry in
         # base101_worlds' gz_ros_bridge.yaml, because that config is shared
         # with the armless configuration, which has no wrist camera.

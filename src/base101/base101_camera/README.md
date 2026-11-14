@@ -15,7 +15,7 @@ saga, the udev rule) if a future camera swap runs into similar issues.
 
 ## Why tune it
 
-- **Lower bandwidth.** RGB and depth run at 640×480, 15 fps. Aligned depth
+- **Lower bandwidth.** RGB and depth run at 640×480, 30 fps. Aligned depth
   and the existing depth filters remain enabled. `config/d415.yaml` is a
   flat RealSense launch configuration, not a ROS parameter-file wrapper.
 - **Compressed transport.** The hardware image installs the JPEG and

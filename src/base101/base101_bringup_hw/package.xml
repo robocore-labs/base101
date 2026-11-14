@@ -48,7 +48,7 @@
        composes them, same as base101_bringup_sim already does. -->
   <exec_depend>base101_slam</exec_depend>
   <exec_depend>base101_nav</exec_depend>
-  <!-- robocore_agent: NOT declared, same as base101_arm_moveit_config below
+  <!-- ringfour_agent: NOT declared, same as base101_arm_moveit_config below
        — not vendored in every checkout (see PIXI.md), agent:=false by
        default so that's fine. Add it back once it's actually sourced. -->
 

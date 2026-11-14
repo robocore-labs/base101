@@ -1,8 +1,8 @@
 # Flat launch configuration consumed by realsense2_camera rs_launch.py.
 # This is NOT a ROS parameter file: do not wrap in /**/ros__parameters.
 # Keep the front camera light enough for live viewing and robot perception.
-depth_module.depth_profile: '640x480x15'
-rgb_camera.color_profile: '640x480x15'
+depth_module.depth_profile: '640x480x30'
+rgb_camera.color_profile: '640x480x30'
 align_depth.enable: true
 spatial_filter.enable: true
 temporal_filter.enable: true

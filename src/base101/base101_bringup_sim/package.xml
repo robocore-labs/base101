@@ -25,7 +25,7 @@
   <!-- Stacks this composes -->
   <exec_depend>base101_slam</exec_depend>
   <exec_depend>base101_nav</exec_depend>
-  <exec_depend>robocore_agent</exec_depend>
+  <exec_depend>ringfour_agent</exec_depend>
 
   <!-- Sim + control runtime -->
   <exec_depend>ros_gz_sim</exec_depend>

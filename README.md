@@ -281,7 +281,7 @@ back to owning the whole graph directly.
 
 | Package | Type | Purpose |
 |---|---|---|
-| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by both bringup packages (`agent:=false` to skip); **not vendored in this workspace** (see `PIXI.md`) — `agent:=true` needs it sourced from elsewhere first. Commands `/cmd_vel_agent` at twist_mux priority 50. |
+| `ringfour_agent` | ament_python | Ringfour Agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by both bringup packages (`agent:=false` to skip); **not vendored in this workspace** (see `PIXI.md`) — `agent:=true` needs it sourced from elsewhere first. Commands `/cmd_vel_agent` at twist_mux priority 50. |
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
 | `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for the arm). |
 
@@ -337,7 +337,7 @@ composes them directly).
 
 - **[`src/base101_arm/base101_arm_moveit_config/README.md`](src/base101_arm/base101_arm_moveit_config/README.md)** — motion planning for the composed robot, and the sync step after the arm is reconfigured
 - **[`src/base101/base101_description/README.md`](src/base101/base101_description/README.md)** — the shared chassis library
-- **[`docs/robocore-camera-frames.md`](docs/robocore-camera-frames.md)** — camera frame conventions, and the `optical: true` change robocore-sdk still needs
+- **[`docs/robocore-camera-frames.md`](docs/robocore-camera-frames.md)** — camera frame conventions, and the `optical: true` convention used by the Ringfour SDK
 - **[`docs/obstacle-awareness.md`](docs/obstacle-awareness.md)** — where perceived obstacles should live relative to a picking layer
 
 **History** — kept for reasoning, not as current documentation

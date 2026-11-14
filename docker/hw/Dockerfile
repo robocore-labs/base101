@@ -6,8 +6,8 @@
 # .hw/ by the `ws` service in ../docker-compose.hw.yaml.
 #
 # base101_bringup_hw's package.xml exec_depends on base101_slam, base101_nav
-# and robocore_agent, and colcon enforces that closure even when they're
-# --packages-select'd out — so slam_toolbox/nav2/robocore_agent's deps are
+# and ringfour_agent, and colcon enforces that closure even when they're
+# --packages-select'd out — so slam_toolbox/nav2/ringfour_agent's deps are
 # installed below even though docker-compose.hw.yaml launches with
 # nav:=false slam:=false agent:=false (no lidar or camera driver yet). No
 # Gazebo, no GUI libs: nothing here opens a display.
@@ -41,9 +41,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-tornado python3-pil \
     && rm -rf /var/lib/apt/lists/*
 
-# robocore_agent needs pydantic v2 (Ubuntu 24.04's python3-pydantic is 1.10)
+# ringfour_agent needs pydantic v2 (Ubuntu 24.04's python3-pydantic is 1.10)
 # — see docker/sim/Dockerfile's identical note. Unused while agent:=false,
-# but required for colcon to build robocore_agent as part of the closure
+# but required for colcon to build ringfour_agent as part of the closure
 # above.
 RUN pip install --no-cache-dir --break-system-packages \
       'pydantic>=2.5' 'websockets>=12' 'numpy>=1.24'

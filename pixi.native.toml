@@ -89,7 +89,7 @@ pytest = "*"
 build = "colcon build --symlink-install --packages-skip base101_arm_moveit_config --event-handlers console_direct+ --cmake-args -DCMAKE_VERBOSE_MAKEFILE=ON"
 test = { cmd = "colcon test && colcon test-result --verbose", depends-on = ["build"] }
 clean = "rm -rf build install log"
-# agent:=false: robocore_agent isn't vendored in this workspace (see
+# agent:=false: ringfour_agent isn't vendored in this workspace (see
 # base101_bringup_sim/package.xml's exec_depend on it) — the launchers'
 # default is agent:=true, which would fail to find the executable. Extra
 # launch args go after the task name: `pixi run sim arm:=true`.

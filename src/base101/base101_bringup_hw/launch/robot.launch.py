@@ -265,7 +265,7 @@ def _setup(context, *args, **kwargs):
             launch_arguments={
                 'camera_name': 'camera',
                 'camera_namespace': '',
-                'base_frame_id': 'camera_link',
+                'base_frame_id': 'link',
                 'device_type': 'd415',
                 'config_file': camera_cfg,
             }.items(),
@@ -321,14 +321,14 @@ def _setup(context, *args, **kwargs):
     if nav:
         tail.append(_stack('base101_nav', 'nav.launch.py', rviz='false'))
     if agent:
-        # robocore_agent isn't vendored in every checkout of this workspace
+        # ringfour_agent isn't vendored in every checkout of this workspace
         # (see PIXI.md) — off by default so a plain `ros2 launch` doesn't
         # fail looking for an executable that isn't built. Pass agent:=true
         # once it's sourced.
         tail.append(Node(
-            package='robocore_agent',
+            package='ringfour_agent',
             executable='agent',
-            name='robocore_agent',
+            name='ringfour_agent',
             output='screen',
             arguments=['--profile', arg('profile')] if arg('profile') else [],
             parameters=[{'use_sim_time': False}],

@@ -308,7 +308,9 @@ class RobocoreVizNode(object):
 
                 # check if remote sub request is not actually a ROS topic before proceeding
                 if topic_name not in self.all_topics:
-                    rospy.logwarn("warning: topic %s not found" % topic_name)
+                    # Optional dashboard topics can be absent during startup or forever.
+                    # Keep retrying discovery without flooding normal device logs.
+                    rospy.logdebug("topic %s not found; waiting for publisher" % topic_name)
                     continue
 
                 # if the local subscriber doesn't exist for the remote sub, create it

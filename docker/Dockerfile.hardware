@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  ros-jazzy-compressed-image-transport ros-jazzy-compressed-depth-image-transport \
  ros-jazzy-slam-toolbox ros-jazzy-navigation2 \
  && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /var/lib/robocore/maps && chown 1000:1000 /var/lib/robocore/maps
 WORKDIR /opt/base101_ws
 COPY src src
 COPY dependencies/rplidar_ros dependencies/rplidar_ros

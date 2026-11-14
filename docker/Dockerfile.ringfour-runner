@@ -1,0 +1,2 @@
+# Package the workstation-built ARM64 image into the Balena release.
+FROM ringfour-runner:latest

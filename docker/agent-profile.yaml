@@ -1,14 +1,41 @@
-# Observation-first hardware profile. Add motion after live commissioning.
+# Armless hardware profile, based on read-only Odin inventory 2026-11-12.
+# Nav2 actions are absent: direct mobility and SLAM only.
 name: base101
 model: base101 hardware, no arm
-version: "1"
+version: "2"
 protocol: 1
 frames: {map: map, odom: odom, base: base_link}
+
+mobility:
+  locomotion: differential
+  cmd_vel: /cmd_vel_agent
+  cmd_vel_stamped: true
+  odom_topic: /odom
+  max_linear: 0.3
+  max_angular: 0.6
+  # No nav2_navigate_to_pose until that server is enabled and commissioned.
+
 cameras:
   base:
+    # c-preview consumes sensor_msgs/Image locally; dashboard uses JPEG.
     rgb: /camera/color/image_raw
+    depth: /camera/aligned_depth_to_color/image_raw
     info: /camera/color/camera_info
     frame: camera_color_optical_frame
     optical: true
+    max_stream_fps: 30.0
+
 lidar: {scan: /scan_filtered}
 imu: {topic: /link101/imu}
+slam:
+  backend: slam_toolbox
+  map_dir: /var/lib/robocore/maps
+status: {diagnostics: /diagnostics}
+teleop: {max_watchdog: 0.5}
+audit:
+  dir: /var/lib/robocore/audit
+  retention_mb: 200
+safety:
+  stop_on_disconnect: true
+  feedback_max_age: 0.5
+# No arm, battery, exploration or unverified vendor actions.

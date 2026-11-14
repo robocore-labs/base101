@@ -122,7 +122,7 @@ fails at the last 2 cm" and is very confusing if you haven't thought about it.
    block the workspace).
 
 4. **Where the picking layer lives at all.** It does not exist yet.
-   `robocore_agent` reads arm joint state and explicitly marks itself
+   `ringfour_agent` reads arm joint state and explicitly marks itself
    "pre-MoveIt"; `base101_mcp` is a generic passthrough. Whatever gets built
    should depend on `moveit_ros_planning_interface` and the planning scene, not
    on camera topics.

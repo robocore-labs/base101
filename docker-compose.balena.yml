@@ -35,19 +35,61 @@ services:
     environment:
       BASE101_ENABLE_MAPPING: 'false'
       BASE101_ENABLE_NAVIGATION: 'false'
+    volumes: ["robocore-maps:/var/lib/robocore/maps"]
     command: [base101-hardware-service, navigation]
   visualiser:
     build: {context: ., dockerfile: docker/Dockerfile.hardware}
     network_mode: host
     restart: on-failure
     command: [base101-hardware-service, visualiser]
-  robocore-agent:
+  ringfour-agent:
     build: {context: ., dockerfile: docker/Dockerfile.agent}
     network_mode: host
     restart: on-failure
     stop_grace_period: 75s
     depends_on: [zenoh-router]
-    volumes: ["robocore-state:/var/lib/robocore"]
+    environment:
+      RINGFOUR_AGENT_MOTION_SOCKET: /run/ringfour-motion/motion.sock
+    command: ["agent", "--profile", "/etc/robocore/profile.yaml", "--socket", "/run/robocore/agent.sock", "--state-dir", "/var/lib/robocore", "--host", "127.0.0.1", "--port", "10101"]
+    volumes: ["robocore-state:/var/lib/robocore", "robocore-maps:/var/lib/robocore/maps", "robocore-agent-socket:/run/robocore", "ringfour-motion-socket:/run/ringfour-motion"]
+
+  ringfour-daemon:
+    build: {context: ., dockerfile: docker/Dockerfile.ringfour-daemon}
+    restart: on-failure
+    depends_on: [ringfour-runner]
+    environment:
+      RINGFOUR_STATUS_HOST: 0.0.0.0
+      RINGFOUR_STATUS_PORT: '8083'
+      DAEMON_DB_PATH: /data/ringfour.db
+      RUNNER_URL: http://ringfour-runner:8082
+      RUNNER_STAGE_DIR: /staged
+      RINGFOUR_AGENT_MOTION_SOCKET: /run/ringfour-motion/motion.sock
+      # Set PLATFORM_API_URL and RUNNER_AUTH_TOKEN in Balena.
+    volumes:
+      - ringfour-daemon-data:/data
+      - ringfour-staged-data:/staged
+      - ringfour-motion-socket:/run/ringfour-motion:ro
+    ports: ["127.0.0.1:8081:8081", "8083:8083"]
+
+  ringfour-runner:
+    build: {context: ., dockerfile: docker/Dockerfile.ringfour-runner}
+    restart: on-failure
+    depends_on: [ringfour-agent]
+    environment:
+      RUNNER_STAGE_DIR: /staged
+      RINGFOUR_AGENT_URL: unix:///run/robocore/agent.sock
+      RUNNER_LOGBOOK_URL: http://ringfour-daemon:8081
+      # Set the same RUNNER_AUTH_TOKEN as ringfour-daemon in Balena.
+    volumes:
+      - ringfour-runner-data:/data
+      - ringfour-staged-data:/staged:ro
+      - robocore-agent-socket:/run/robocore:ro
 
 volumes:
+  robocore-maps:
   robocore-state:
+  robocore-agent-socket:
+  ringfour-motion-socket:
+  ringfour-daemon-data:
+  ringfour-runner-data:
+  ringfour-staged-data:
