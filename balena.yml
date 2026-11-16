@@ -1,6 +1,6 @@
 name: base101
 type: sw.application
-version: 0.2.0
+version: 1.0.1
 description: base101 Link101 hardware, RealSense, lidar SLAM and Nav2
 assets:
   repository:

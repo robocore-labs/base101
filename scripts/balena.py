@@ -13,7 +13,7 @@ STAGE = ROOT / '.runtime/balena'
 # Explicit allowlist: never upload native installs, simulation worlds, .env or .git.
 DIRECTORIES = ('src/base101', 'src/robocore_viz', 'dependencies/mod101/src', 'dependencies/rplidar_ros')
 FILES = ('docker/Dockerfile.ringfour-daemon', 'docker/Dockerfile.ringfour-runner', 'profiles/base101_hw.yaml', 'docker/Dockerfile.agent', 'docker/agent-profile.yaml', 'balena.yml', 'docker/Dockerfile.hardware', 'docker/Dockerfile.zenoh',
-         'docker/entrypoint.hardware.sh', 'docker/start.hardware.sh',
+         'docker/entrypoint.agent.sh', 'docker/entrypoint.hardware.sh', 'docker/start.hardware.sh',
          'docker/start.zenoh.sh', 'docker/serial-path.sh', 'docker/zenoh-session.json5',
          'docker/hardware-dashboard.yaml')
 

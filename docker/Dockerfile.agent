@@ -1,8 +1,11 @@
 FROM ringfour-agent:c-preview
 COPY docker/zenoh-session.json5 /etc/base101/session.json5
 COPY profiles/base101_hw.yaml /etc/robocore/profile.yaml
+COPY docker/entrypoint.agent.sh /usr/local/bin/ringfour-agent-entrypoint
 USER root
-RUN mkdir -p /var/lib/robocore/maps /run/robocore && chown ubuntu:ubuntu /var/lib/robocore/maps /run/robocore
-USER ubuntu
+RUN chmod 0755 /usr/local/bin/ringfour-agent-entrypoint \
+    && mkdir -p /var/lib/robocore/maps /var/lib/robocore/audit /run/robocore \
+    && chown ubuntu:ubuntu /var/lib/robocore /var/lib/robocore/maps /var/lib/robocore/audit /run/robocore
 ENV ROS_DOMAIN_ID=0 RMW_IMPLEMENTATION=rmw_zenoh_cpp ZENOH_SESSION_CONFIG_URI=/etc/base101/session.json5
+ENTRYPOINT ["/usr/local/bin/ringfour-agent-entrypoint"]
 CMD ["agent", "--profile", "/etc/robocore/profile.yaml", "--socket", "/run/robocore/agent.sock", "--state-dir", "/var/lib/robocore", "--host", "127.0.0.1", "--port", "10101"]

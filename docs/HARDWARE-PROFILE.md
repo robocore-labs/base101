@@ -1,6 +1,6 @@
 # base101 hardware profile
 
-Canonical file: profiles/base101_hw.yaml. Dockerfile.agent bakes this into /etc/robocore/profile.yaml; docker/agent-profile.yaml mirrors it for compatibility. The profile is armless and validated against ringfour-agent:c-preview.
+Canonical file: profiles/base101_hw.yaml. Dockerfile.agent bakes this into /etc/robocore/profile.yaml. The profile is armless and validated against ringfour-agent:c-preview.
 
 ## Read-only evidence — Odin, 2026-11-12
 
@@ -15,6 +15,12 @@ The live graph exposes slam_toolbox serialize, deserialize, pause and reset serv
 - Camera: raw local RGB and aligned depth plus color CameraInfo. c-preview subscribes sensor_msgs/Image; compressed transport remains available for other consumers. SDK stream cap is 30 fps. The captured live deployment was still 15 fps; pending camera config requests 30 fps.
 - Lidar: /scan_filtered. IMU: /link101/imu. Diagnostics: /diagnostics.
 - State/audit: persistent robocore-state. Maps: separate robocore-maps volume at /var/lib/robocore/maps in agent and navigation containers, so slam_toolbox and agent can read/write the same files. Both images seed this directory as uid 1000 to avoid first-start ownership races. Existing named volumes retain their prior ownership.
+- Restart recovery: the reviewed controller-manager baseline is `{}` because
+  the armless hardware command path is `twist_mux -> /link101/cmd_vel ->
+  Axon 2`; installing `diff_drive_controller` in an image does not start one.
+  Stop verification uses fresh fused `/odom` samples for a 0.5 s dwell, with
+  limits of 0.01 m/s and 0.02 rad/s. On 2026-11-14, stationary live samples
+  showed 0.0 m/s and less than 0.0004 rad/s yaw noise.
 
 ## Fixes required in next release
 

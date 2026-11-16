@@ -2,7 +2,7 @@
 # Nav2 actions are absent: direct mobility and SLAM only.
 name: base101
 model: base101 hardware, no arm
-version: "2"
+version: "3"
 protocol: 1
 frames: {map: map, odom: odom, base: base_link}
 
@@ -38,4 +38,15 @@ audit:
 safety:
   stop_on_disconnect: true
   feedback_max_age: 0.5
+  # Base locomotion talks to the Axon firmware through twist_mux, so the
+  # reviewed controller-manager baseline is intentionally empty. This is
+  # distinct from an omitted, unreviewed baseline.
+  restart_recovery_controllers: {}
+  # /odom is fused at 50 Hz. These thresholds are above the stationary EKF
+  # noise observed on Odin and far below the profile's motion limits.
+  stop_verification:
+    linear_velocity_limit: 0.01
+    angular_velocity_limit: 0.02
+    dwell: 0.5
+    timeout: 5.0
 # No arm, battery, exploration or unverified vendor actions.

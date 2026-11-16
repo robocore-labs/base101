@@ -44,6 +44,8 @@ services:
     command: [base101-hardware-service, visualiser]
   ringfour-agent:
     build: {context: ., dockerfile: docker/Dockerfile.agent}
+    # Entrypoint fixes persisted volume ownership as root, then drops to ubuntu.
+    user: "0:0"
     network_mode: host
     restart: on-failure
     stop_grace_period: 75s

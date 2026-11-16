@@ -12,7 +12,8 @@
      base101_control/config/controllers.{sim,hw}.yaml. -->
 
 <!-- How the arm is built is the web configurator's call, not ours. Including
-     mod101_config.xacro gives us the same tool + rail lengths + servo mounts
+     mod101_config.xacro gives us the same tool, wrist orientation, rail
+     lengths, and servo mounts
      the configurator last wrote, so re-running it and rebuilding is enough to
      change the arm here. Passing these explicitly matters: leave any of them
      off and the macro silently falls back to its own signature defaults, which
@@ -47,6 +48,7 @@
 <xacro:mod101_arm prefix="arm_" parent="top_plate_1"
                   xyz="0.08 0.11 0.003" rpy="0 0 0"
                   tool="$(arg arm_tool)" use_sim="${arm_use_sim}"
+                  wrist_flip="$(arg wrist_flip)"
                   shoulder_ext_length="$(arg shoulder_ext_length)"
                   elbow_ext_length="$(arg elbow_ext_length)"
                   shoulder_mount="$(arg shoulder_mount)"
